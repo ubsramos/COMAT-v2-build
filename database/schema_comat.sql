@@ -1,5 +1,5 @@
 -- ==============================================================================
--- SCHEMA INICIAL DO BANCO DE DADOS — COMAT v2.0
+-- SCHEMA OFICIAL COMPLETO DO BANCO DE DADOS — COMAT v2.0
 -- MySQL 8.0+ / MariaDB 10.5+
 -- ==============================================================================
 
@@ -11,9 +11,11 @@ CREATE TABLE IF NOT EXISTS `usuario` (
   `id` INT AUTO_INCREMENT PRIMARY KEY,
   `login` VARCHAR(100) NOT NULL UNIQUE,
   `senha` VARCHAR(255) NOT NULL,
+  `email` VARCHAR(255) NULL,
   `nivel` INT NOT NULL DEFAULT 1,
   `ativo` TINYINT(1) NOT NULL DEFAULT 1,
   `acesso` TEXT NULL,
+  `hash` VARCHAR(64) NULL,
   `criado_em` DATETIME DEFAULT CURRENT_TIMESTAMP
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
@@ -60,16 +62,24 @@ CREATE TABLE IF NOT EXISTS `funcionario` (
 CREATE TABLE IF NOT EXISTS `produto` (
   `id` INT AUTO_INCREMENT PRIMARY KEY,
   `codigo` VARCHAR(50) NULL,
+  `codigo_barra` VARCHAR(100) NULL,
+  `codigo_interno` VARCHAR(100) NULL,
   `descricao_resumo` VARCHAR(255) NOT NULL,
+  `descricao_completa` TEXT NULL,
   `depto_id` INT NULL,
   `grupo_id` INT NULL,
   `unidade` VARCHAR(20) NOT NULL DEFAULT 'UN',
   `qtde_estoque` DECIMAL(12,2) NOT NULL DEFAULT 0.00,
+  `qtde_reservado` DECIMAL(12,2) NOT NULL DEFAULT 0.00,
   `qtde_min` DECIMAL(12,2) NOT NULL DEFAULT 0.00,
   `qtde_max` DECIMAL(12,2) NOT NULL DEFAULT 0.00,
   `valor_compra` DECIMAL(12,2) NOT NULL DEFAULT 0.00,
+  `custo_medio` DECIMAL(12,2) NOT NULL DEFAULT 0.00,
   `foto` VARCHAR(255) NULL,
+  `status` INT NOT NULL DEFAULT 1,
   `ativo` TINYINT(1) NOT NULL DEFAULT 1,
+  `entidade_id` INT NULL,
+  `hash` VARCHAR(64) NULL,
   `criado_em` DATETIME DEFAULT CURRENT_TIMESTAMP,
   CONSTRAINT `fk_prod_depto` FOREIGN KEY (`depto_id`) REFERENCES `departamento` (`id`) ON DELETE SET NULL,
   CONSTRAINT `fk_prod_grupo` FOREIGN KEY (`grupo_id`) REFERENCES `grupo` (`id`) ON DELETE SET NULL
@@ -79,8 +89,12 @@ CREATE TABLE IF NOT EXISTS `produto` (
 CREATE TABLE IF NOT EXISTS `requisicao` (
   `id` INT AUTO_INCREMENT PRIMARY KEY,
   `numero` VARCHAR(50) NULL,
-  `usuario_solicitante_id` INT NULL,
+  `depto_destino_id` INT NULL,
+  `depto_origem_id` INT NULL,
   `departamento_id` INT NULL,
+  `usuario_solicitante_id` INT NULL,
+  `usuario_aprovador_id` INT NULL,
+  `usuario_atendente_id` INT NULL,
   `motivo_id` INT NULL,
   `data_solicitacao` DATETIME DEFAULT CURRENT_TIMESTAMP,
   `data_aprovacao` DATETIME NULL,
@@ -88,8 +102,10 @@ CREATE TABLE IF NOT EXISTS `requisicao` (
   `status` INT NOT NULL DEFAULT 0, -- 0: Pendente, 1: Aprovada, 2: Processada/Fechada, 3: Devolvida/Cancelada
   `observacao` TEXT NULL,
   `tipo` VARCHAR(20) NOT NULL DEFAULT 'SAIDA',
+  `entidade_id` INT NULL,
+  `criado_em` DATETIME DEFAULT CURRENT_TIMESTAMP,
   CONSTRAINT `fk_req_func` FOREIGN KEY (`usuario_solicitante_id`) REFERENCES `funcionario` (`id`) ON DELETE SET NULL,
-  CONSTRAINT `fk_req_depto` FOREIGN KEY (`departamento_id`) REFERENCES `departamento` (`id`) ON DELETE SET NULL,
+  CONSTRAINT `fk_req_depto_dest` FOREIGN KEY (`depto_destino_id`) REFERENCES `departamento` (`id`) ON DELETE SET NULL,
   CONSTRAINT `fk_req_motivo` FOREIGN KEY (`motivo_id`) REFERENCES `motivo` (`id`) ON DELETE SET NULL
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
@@ -98,7 +114,9 @@ CREATE TABLE IF NOT EXISTS `requisicao_item` (
   `id` INT AUTO_INCREMENT PRIMARY KEY,
   `request_id` INT NOT NULL,
   `produto_id` INT NOT NULL,
+  `qtde` DECIMAL(12,2) NOT NULL DEFAULT 1.00,
   `quantidade` DECIMAL(12,2) NOT NULL DEFAULT 1.00,
+  `valor_produto` DECIMAL(12,2) NOT NULL DEFAULT 0.00,
   `valor_unitario` DECIMAL(12,2) NOT NULL DEFAULT 0.00,
   `status` INT NOT NULL DEFAULT 0, -- 0: Pendente, 1: Processado, 2: Devolvido
   `motivo_devolucao` VARCHAR(255) NULL,
@@ -110,7 +128,8 @@ CREATE TABLE IF NOT EXISTS `requisicao_item` (
 CREATE TABLE IF NOT EXISTS `correspondencia_tipo` (
   `id` INT AUTO_INCREMENT PRIMARY KEY,
   `descricao` VARCHAR(100) NOT NULL,
-  `ativo` TINYINT(1) NOT NULL DEFAULT 1
+  `ativo` TINYINT(1) NOT NULL DEFAULT 1,
+  `criado_em` DATETIME DEFAULT CURRENT_TIMESTAMP
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 -- 10. Tabela: correspondencia (Gestão de Correspondências e Encomendas da Recepção)
@@ -126,6 +145,7 @@ CREATE TABLE IF NOT EXISTS `correspondencia` (
   `data_retirada` DATETIME NULL,
   `retirado_por` VARCHAR(255) NULL,
   `observacao` TEXT NULL,
+  `criado_em` DATETIME DEFAULT CURRENT_TIMESTAMP,
   CONSTRAINT `fk_corresp_tipo` FOREIGN KEY (`tipo_id`) REFERENCES `correspondencia_tipo` (`id`) ON DELETE SET NULL,
   CONSTRAINT `fk_corresp_dest` FOREIGN KEY (`destinatario_id`) REFERENCES `funcionario` (`id`) ON DELETE SET NULL
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;

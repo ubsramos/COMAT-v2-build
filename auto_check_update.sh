@@ -31,10 +31,12 @@ if [ -n "$LOCAL_HASH" ] && [ -n "$REMOTE_HASH" ] && [ "$LOCAL_HASH" != "$REMOTE_
     # Recarrega o container Docker
     if docker compose version >/dev/null 2>&1; then
         docker compose up -d --build --remove-orphans
+        docker compose exec -T app php /var/www/html/api/db_migrate.php >/dev/null 2>&1 || true
     else
         docker-compose up -d --build --remove-orphans
+        docker-compose exec -T app php /var/www/html/api/db_migrate.php >/dev/null 2>&1 || true
     fi
     
-    echo "[$(date '+%Y-%m-%d %H:%M:%S')] Atualizacao concluida com sucesso!"
+    echo "[$(date '+%Y-%m-%d %H:%M:%S')] Atualizacao e migracao concluidas com sucesso!"
     echo "=============================================================================="
 fi

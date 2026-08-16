@@ -19,7 +19,10 @@ cd "$SCRIPT_DIR"
 echo -e "\n${CYAN}[1/2] Baixando versao compilada mais recente...${NC}"
 git pull origin main
 
-echo -e "\n${CYAN}[2/2] Recarregando containers Docker...${NC}"
-docker compose up -d --build --remove-orphans
+echo -e "\n${CYAN}[2/3] Recarregando containers Docker...${NC}"
+docker compose up -d --build --remove-orphans || docker-compose up -d --build --remove-orphans
 
-echo -e "\n${GREEN}[OK] COMAT v2 atualizado com sucesso!${NC}\n"
+echo -e "\n${CYAN}[3/3] Verificando e migrando estrutura do banco de dados...${NC}"
+docker compose exec -T app php /var/www/html/api/db_migrate.php 2>/dev/null || docker-compose exec -T app php /var/www/html/api/db_migrate.php 2>/dev/null || true
+
+echo -e "\n${GREEN}[OK] COMAT v2 atualizado e banco sincronizado com sucesso!${NC}\n"

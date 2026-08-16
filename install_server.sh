@@ -209,6 +209,10 @@ echo -e "${YELLOW}Subindo container Docker na porta interna 127.0.0.1:${APP_DOCK
 $COMPOSE_CMD -f "$SCRIPT_DIR/docker-compose.yml" down --remove-orphans 2>/dev/null || true
 $COMPOSE_CMD -f "$SCRIPT_DIR/docker-compose.yml" up -d --build
 
+# Executa migrações automáticas de integridade de tabelas
+echo -e "${YELLOW}Validando estrutura de tabelas e colunas no MySQL...${NC}"
+$COMPOSE_CMD -f "$SCRIPT_DIR/docker-compose.yml" exec -T app php /var/www/html/api/db_migrate.php 2>/dev/null || true
+
 # Criacao do Virtual Host no Nginx do Host
 NGINX_SITE_CONF="/etc/nginx/sites-available/comat_v2.conf"
 mkdir -p /etc/nginx/sites-available /etc/nginx/sites-enabled /etc/nginx/ssl
