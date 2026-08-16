@@ -1,0 +1,34 @@
+# ==============================================================================
+# DOCKER COMPOSE — COMAT v2 (CONTAINER ISOLADO EM PORTA INTERNA)
+# ==============================================================================
+
+version: '3.8'
+
+services:
+  comat_app:
+    container_name: comat_v2_app
+    build:
+      context: ./docker
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    ports:
+      # Expõe na porta interna (ex: 127.0.0.1:8033) protegida contra acessos externos diretos
+      - "127.0.0.1:${APP_DOCKER_PORT:-8033}:80"
+    volumes:
+      - ./app/public:/var/www/html/public:ro
+      - ./app/backend:/var/www/html/backend:ro
+      - comat_uploads:/var/www/html/backend/uploads
+    env_file:
+      - .env.production
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost/"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+
+volumes:
+  comat_uploads:
+    driver: local

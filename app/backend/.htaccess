@@ -1,0 +1,22 @@
+# ==============================================================================
+# CONFIGURAÇÃO APACHE / HTACCESS — SISTEMA COMAT
+# Encaminha transparentemente todas as requisições dinâmicas para o Front Controller PHP.
+# ==============================================================================
+
+<IfModule mod_rewrite.c>
+    RewriteEngine On
+    RewriteBase /backend/
+
+    # Se a URL for um arquivo físico existente (ex: uploads/produto/foto.jpg), serve-o diretamente
+    RewriteCond %{REQUEST_FILENAME} !-f
+    RewriteCond %{REQUEST_FILENAME} !-d
+
+    # Encaminha qualquer outra rota dinamicamente para o Front Controller da API
+    RewriteRule ^(.*)$ api/index.php [QSA,L]
+</IfModule>
+
+# Desativa listagem de diretórios por motivos de segurança sênior
+Options -Indexes
+
+# Configurações adicionais de cabeçalho e codificação padrão
+AddDefaultCharset UTF-8

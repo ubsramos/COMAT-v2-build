@@ -1,0 +1,477 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <title>Guia Operacional — Automação de Deploy Contínuo (CI/CD) com GitHub Actions e Self-Hosted Runner</title>
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap');
+
+    @page {
+      size: A4 portrait;
+      margin: 12mm 15mm 12mm 15mm;
+    }
+
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+
+    body {
+      font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+      color: #1e293b;
+      background: #ffffff;
+      line-height: 1.45;
+      font-size: 12px;
+      -webkit-print-color-adjust: exact;
+      print-color-adjust: exact;
+    }
+
+    .page {
+      page-break-after: always;
+      position: relative;
+      min-height: 270mm;
+      max-height: 270mm;
+    }
+
+    .page:last-child {
+      page-break-after: avoid;
+    }
+
+    /* Header */
+    .header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      border-bottom: 2px solid #0284c7;
+      padding-bottom: 10px;
+      margin-bottom: 14px;
+    }
+
+    .header-logo {
+      font-size: 20px;
+      font-weight: 800;
+      color: #0f172a;
+      letter-spacing: -0.5px;
+    }
+
+    .header-logo span {
+      color: #0284c7;
+    }
+
+    .header-badge {
+      background: #f0f9ff;
+      border: 1px solid #bae6fd;
+      color: #0369a1;
+      font-size: 10.5px;
+      font-weight: 600;
+      padding: 3px 9px;
+      border-radius: 9999px;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+    }
+
+    /* Typography */
+    h1 {
+      font-size: 17.5px;
+      font-weight: 800;
+      color: #0f172a;
+      margin-bottom: 6px;
+      letter-spacing: -0.3px;
+    }
+
+    h2 {
+      font-size: 13px;
+      font-weight: 700;
+      color: #0f172a;
+      margin-top: 10px;
+      margin-bottom: 6px;
+      border-left: 4px solid #0284c7;
+      padding-left: 8px;
+    }
+
+    h3 {
+      font-size: 11.5px;
+      font-weight: 600;
+      color: #334155;
+      margin-top: 6px;
+      margin-bottom: 3px;
+    }
+
+    p {
+      margin-bottom: 8px;
+      color: #475569;
+      font-size: 11.5px;
+      text-align: justify;
+    }
+
+    /* Cards & Boxes */
+    .card {
+      background: #f8fafc;
+      border: 1px solid #e2e8f0;
+      border-radius: 6px;
+      padding: 8px 12px;
+      margin-bottom: 10px;
+    }
+
+    .card-highlight {
+      background: #f0fdf4;
+      border: 1px solid #bbf7d0;
+      border-left: 4px solid #16a34a;
+    }
+
+    .card-info {
+      background: #eff6ff;
+      border: 1px solid #bfdbfe;
+      border-left: 4px solid #2563eb;
+    }
+
+    /* Grid Layouts */
+    .grid-2 {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 10px;
+      margin-bottom: 8px;
+    }
+
+    .grid-3 {
+      display: grid;
+      grid-template-columns: 1fr 1fr 1fr;
+      gap: 8px;
+      margin-bottom: 10px;
+    }
+
+    .metric-box {
+      background: #ffffff;
+      border: 1px solid #e2e8f0;
+      border-radius: 6px;
+      padding: 8px;
+      text-align: center;
+    }
+
+    .metric-title {
+      font-size: 10px;
+      color: #64748b;
+      font-weight: 600;
+      text-transform: uppercase;
+      margin-bottom: 2px;
+    }
+
+    .metric-val {
+      font-size: 13.5px;
+      font-weight: 700;
+      color: #0f172a;
+      font-family: 'JetBrains Mono', monospace;
+    }
+
+    /* Code & Terminal */
+    code, pre {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 10.5px;
+    }
+
+    pre {
+      background: #0f172a;
+      color: #f8fafc;
+      padding: 8px 10px;
+      border-radius: 6px;
+      overflow-x: auto;
+      margin-bottom: 8px;
+      line-height: 1.35;
+    }
+
+    code.inline {
+      background: #f1f5f9;
+      color: #0f172a;
+      padding: 1px 4px;
+      border-radius: 4px;
+      border: 1px solid #e2e8f0;
+      font-weight: 600;
+    }
+
+    /* Tables */
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      margin-bottom: 10px;
+      font-size: 11px;
+    }
+
+    th, td {
+      padding: 5px 8px;
+      text-align: left;
+      border-bottom: 1px solid #e2e8f0;
+    }
+
+    th {
+      background: #f1f5f9;
+      font-weight: 600;
+      color: #334155;
+      text-transform: uppercase;
+      font-size: 10px;
+      letter-spacing: 0.5px;
+    }
+
+    tr:nth-child(even) {
+      background: #f8fafc;
+    }
+
+    /* Diagram SVG Styles */
+    .diagram-container {
+      background: #ffffff;
+      border: 1px solid #cbd5e1;
+      border-radius: 8px;
+      padding: 10px;
+      margin-bottom: 10px;
+      text-align: center;
+    }
+
+    .diagram-caption {
+      font-size: 10.5px;
+      font-weight: 600;
+      color: #64748b;
+      margin-top: 6px;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+    }
+
+    /* Step List */
+    .step-item {
+      display: flex;
+      gap: 10px;
+      margin-bottom: 8px;
+      align-items: flex-start;
+    }
+
+    .step-badge {
+      background: #0284c7;
+      color: #ffffff;
+      font-weight: 800;
+      font-size: 10px;
+      width: 20px;
+      height: 20px;
+      border-radius: 50%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      flex-shrink: 0;
+      margin-top: 1px;
+    }
+
+    /* Footer */
+    .footer {
+      position: absolute;
+      bottom: 0;
+      left: 0;
+      right: 0;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      border-top: 1px solid #e2e8f0;
+      padding-top: 6px;
+      font-size: 9.5px;
+      color: #94a3b8;
+    }
+  </style>
+</head>
+<body>
+
+  <!-- ================= PAGE 1: CONCEITO, TOPOLOGIA & INSTALACAO ================= -->
+  <div class="page">
+    <div class="header">
+      <div class="header-logo">COMAT <span>v2.0</span></div>
+      <div class="header-badge">Pipeline de Deploy Contínuo (CI/CD)</div>
+    </div>
+
+    <h1>Automação de Deploy Contínuo com GitHub Actions (Self-Hosted Runner)</h1>
+    <p>
+      Este guia documenta o ciclo automatizado de atualização contínua do sistema <strong>COMAT v2</strong>. Ao enviar uma alteração de código para o repositório GitHub (<code>git push origin main</code>), o servidor Linux no ambiente local ou corporativo detecta o evento e atualiza os containers Docker em tempo real sem intervenção manual.
+    </p>
+
+    <h2>1. Topologia do Pipeline de Deploy</h2>
+
+    <!-- Diagrama SVG do Pipeline -->
+    <div class="diagram-container">
+      <svg viewBox="0 0 760 210" width="100%" height="185" xmlns="http://www.w3.org/2000/svg">
+        <defs>
+          <linearGradient id="blueGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+            <stop offset="0%" stop-color="#0284c7" />
+            <stop offset="100%" stop-color="#0369a1" />
+          </linearGradient>
+          <linearGradient id="darkGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+            <stop offset="0%" stop-color="#1e293b" />
+            <stop offset="100%" stop-color="#0f172a" />
+          </linearGradient>
+          <linearGradient id="greenGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+            <stop offset="0%" stop-color="#10b981" />
+            <stop offset="100%" stop-color="#047857" />
+          </linearGradient>
+        </defs>
+
+        <!-- Bloco 1: Desenvolvedor / Mac -->
+        <rect x="15" y="55" width="130" height="90" rx="8" fill="#f8fafc" stroke="#cbd5e1" stroke-width="2"/>
+        <text x="80" y="85" font-family="Inter" font-size="11" font-weight="700" fill="#0f172a" text-anchor="middle">DESENVOLVEDOR</text>
+        <text x="80" y="105" font-family="JetBrains Mono" font-size="9.5" fill="#0284c7" text-anchor="middle">git push origin main</text>
+        <text x="80" y="125" font-family="Inter" font-size="8.5" fill="#64748b" text-anchor="middle">(Novo Recurso / Fix)</text>
+
+        <!-- Seta 1: Mac -> GitHub -->
+        <path d="M 145 100 L 205 100" stroke="#0284c7" stroke-width="2" fill="none" />
+        <polygon points="205,100 197,95 197,105" fill="#0284c7" />
+
+        <!-- Bloco 2: GitHub Repository / Actions -->
+        <rect x="210" y="45" width="165" height="110" rx="8" fill="url(#darkGrad)"/>
+        <text x="292" y="75" font-family="Inter" font-size="12" font-weight="800" fill="#ffffff" text-anchor="middle">GITHUB ACTIONS</text>
+        <text x="292" y="95" font-family="Inter" font-size="9.5" fill="#94a3b8" text-anchor="middle">Evento: push em main</text>
+        <rect x="225" y="108" width="135" height="30" rx="4" fill="#ffffff" opacity="0.1" />
+        <text x="292" y="126" font-family="JetBrains Mono" font-size="9" fill="#38bdf8" text-anchor="middle">runs-on: self-hosted</text>
+
+        <!-- Seta 2: GitHub -> Runner Local (Comunicação Segura de Dentro para Fora) -->
+        <path d="M 375 100 L 435 100" stroke="#10b981" stroke-width="2" stroke-dasharray="4,4" fill="none" />
+        <polygon points="435,100 427,95 427,105" fill="#10b981" />
+        <text x="405" y="90" font-family="Inter" font-size="8" font-weight="600" fill="#16a34a" text-anchor="middle">Conexão Segura</text>
+        <text x="405" y="118" font-family="Inter" font-size="7.5" fill="#64748b" text-anchor="middle">(Sem portas abertas)</text>
+
+        <!-- Bloco 3: Self-Hosted Runner no Servidor -->
+        <rect x="440" y="40" width="145" height="120" rx="8" fill="url(#blueGrad)"/>
+        <text x="512" y="68" font-family="Inter" font-size="11" font-weight="800" fill="#ffffff" text-anchor="middle">ACTIONS RUNNER</text>
+        <text x="512" y="86" font-family="Inter" font-size="9" fill="#bae6fd" text-anchor="middle">(Serviço Daemon no Host)</text>
+        <text x="512" y="108" font-family="JetBrains Mono" font-size="8.5" fill="#ffffff" text-anchor="middle">1. git checkout</text>
+        <text x="512" y="124" font-family="JetBrains Mono" font-size="8.5" fill="#ffffff" text-anchor="middle">2. npm run build</text>
+        <text x="512" y="140" font-family="JetBrains Mono" font-size="8.5" fill="#ffffff" text-anchor="middle">3. docker compose up</text>
+
+        <!-- Seta 3: Runner -> Docker COMAT -->
+        <path d="M 585 100 L 635 100" stroke="#0284c7" stroke-width="2" fill="none" />
+        <polygon points="635,100 627,95 627,105" fill="#0284c7" />
+
+        <!-- Bloco 4: Docker COMAT v2 Atualizado -->
+        <rect x="640" y="55" width="105" height="90" rx="8" fill="url(#greenGrad)"/>
+        <text x="692" y="85" font-family="Inter" font-size="10" font-weight="800" fill="#ffffff" text-anchor="middle">COMAT v2</text>
+        <text x="692" y="102" font-family="Inter" font-size="8.5" fill="#dcfce7" text-anchor="middle">Container 8033</text>
+        <text x="692" y="122" font-family="Inter" font-size="9" font-weight="700" fill="#ffffff" text-anchor="middle">✓ ATUALIZADO</text>
+      </svg>
+      <div class="diagram-caption">Figura 1 — Fluxo de Execução Contínua com GitHub Actions e Self-Hosted Runner</div>
+    </div>
+
+    <h2>2. Por Que Usar Self-Hosted Runner?</h2>
+    <div class="grid-3">
+      <div class="metric-box">
+        <div class="metric-title">Sem Portas Abertas</div>
+        <div class="metric-val">100% Blindado</div>
+        <p style="font-size:9.5px; margin:2px 0 0; color:#64748b;">Comunicação outbound. Funciona em rede interna e residencial.</p>
+      </div>
+      <div class="metric-box">
+        <div class="metric-title">Zero Cron Polling</div>
+        <div class="metric-val">Reativo / Push</div>
+        <p style="font-size:9.5px; margin:2px 0 0; color:#64748b;">Dispara no milissegundo do push sem gastar CPU com loops.</p>
+      </div>
+      <div class="metric-box">
+        <div class="metric-title">Logs no GitHub</div>
+        <div class="metric-val">Aba Actions</div>
+        <p style="font-size:9.5px; margin:2px 0 0; color:#64748b;">Acompanhe o build e o status diretamente no navegador.</p>
+      </div>
+    </div>
+
+    <h2>3. Etapa 1: Obter o Token de Registro no GitHub</h2>
+    <p>
+      1. Acesse: <code>https://github.com/ubsramos/COMAT-v2/settings/actions/runners/new</code><br/>
+      2. Selecione <strong>Linux</strong> e arquitetura <strong>x64</strong>. O GitHub fornecerá os comandos com o token temporário.
+    </p>
+
+    <div class="footer">
+      <div>COMAT v2.0 — Automação de Deploy Contínuo (CI/CD)</div>
+      <div>Página 1 de 2</div>
+    </div>
+  </div>
+
+  <!-- ================= PAGE 2: COMANDOS, SERVICO E WORKFLOW ================= -->
+  <div class="page">
+    <div class="header">
+      <div class="header-logo">COMAT <span>v2.0</span></div>
+      <div class="header-badge">Guia de Instalação e Manutenção</div>
+    </div>
+
+    <h1>Instalação do Runner e Configuração do Serviço no Linux</h1>
+
+    <h2>1. Comandos de Instalação no Terminal do Servidor</h2>
+    <p>Conecte via SSH no servidor Linux (<code>ssh uli@192.168.15.4</code>) e execute os passos abaixo:</p>
+
+    <pre>
+# 1. Criar pasta do runner na home do usuario
+mkdir -p ~/actions-runner && cd ~/actions-runner
+
+# 2. Baixar o pacote oficial do GitHub Runner
+curl -o actions-runner-linux-x64-2.322.0.tar.gz -L https://github.com/actions/runner/releases/download/v2.322.0/actions-runner-linux-x64-2.322.0.tar.gz
+
+# 3. Descompactar o instalador
+tar xzf ./actions-runner-linux-x64-2.322.0.tar.gz
+
+# 4. Registrar o runner no repositorio (substitua pelo token do GitHub)
+./config.sh --url https://github.com/ubsramos/COMAT-v2 --token SEU_TOKEN_AQUI
+    </pre>
+
+    <h2>2. Configurar o Runner como Serviço Permanente (Systemd Daemon)</h2>
+    <p>Para garantir que o Runner execute em segundo plano e inicie sozinho no boot do servidor:</p>
+
+    <pre>
+cd ~/actions-runner
+sudo ./svc.sh install
+sudo ./svc.sh start
+    </pre>
+
+    <h2>3. Estrutura do Workflow do GitHub Actions (.github/workflows/deploy.yml)</h2>
+    <p>O arquivo de automação já integrado no projeto executa as seguintes etapas no servidor:</p>
+
+    <table>
+      <thead>
+        <tr>
+          <th>Etapa (Step)</th>
+          <th>Comando Executado no Servidor</th>
+          <th>Objetivo</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td><strong>1. Checkout</strong></td>
+          <td><code>actions/checkout@v4</code></td>
+          <td>Baixa a versão mais recente do código</td>
+        </tr>
+        <tr>
+          <td><strong>2. Build Frontend</strong></td>
+          <td><code>cd frontend && npm install && npm run build</code></td>
+          <td>Compila o React 19 em bundle SPA/PWA</td>
+        </tr>
+        <tr>
+          <td><strong>3. Atualizar App</strong></td>
+          <td><code>cp -r frontend/dist/* DOCKER-DISTRIB/app/public/</code></td>
+          <td>Copia assets para o volume Docker</td>
+        </tr>
+        <tr>
+          <td><strong>4. Docker Reload</strong></td>
+          <td><code>cd DOCKER-DISTRIB && docker compose up -d --build</code></td>
+          <td>Aplica as alterações com zero downtime</td>
+        </tr>
+      </tbody>
+    </table>
+
+    <h2>4. Comandos de Manutenção e Diagnóstico do Runner</h2>
+    <div class="card card-info">
+      <pre style="margin-bottom:0; padding:6px 8px; font-size:10px;">
+# Verificar status do servico:    sudo ./svc.sh status
+# Reiniciar o runner:             sudo ./svc.sh restart
+# Parar o runner:                 sudo ./svc.sh stop
+# Desinstalar servico:            sudo ./svc.sh uninstall
+      </pre>
+    </div>
+
+    <div class="card card-highlight">
+      <strong>Como Disparar o Deploy:</strong> No seu Mac, basta commitar suas alterações e dar <code>git push origin main</code>. A aba <strong>Actions</strong> no GitHub mostrará o deploy sendo executado em tempo real!
+    </div>
+
+    <div class="footer">
+      <div>COMAT v2.0 — Automação de Deploy Contínuo (CI/CD)</div>
+      <div>Página 2 de 2</div>
+    </div>
+  </div>
+
+</body>
+</html>

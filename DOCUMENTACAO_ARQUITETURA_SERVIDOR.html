@@ -1,0 +1,571 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <title>Documentação Técnica de Arquitetura de Servidor — COMAT v2.0</title>
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&family=JetBrains+Mono:wght@400;500;600;700&display=swap');
+
+    @page {
+      size: A4 portrait;
+      margin: 12mm 15mm 12mm 15mm;
+    }
+
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+
+    body {
+      font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+      color: #1e293b;
+      background: #ffffff;
+      line-height: 1.45;
+      font-size: 12px;
+      -webkit-print-color-adjust: exact;
+      print-color-adjust: exact;
+    }
+
+    .page {
+      page-break-after: always;
+      position: relative;
+      min-height: 272mm;
+      max-height: 272mm;
+      display: flex;
+      flex-direction: column;
+      justify-content: flex-start;
+    }
+
+    .page:last-child {
+      page-break-after: avoid;
+    }
+
+    /* Header Premium */
+    .header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      border-bottom: 2.5px solid #0f172a;
+      padding-bottom: 8px;
+      margin-bottom: 12px;
+    }
+
+    .header-left {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+
+    .header-logo-img {
+      height: 42px;
+      object-fit: contain;
+    }
+
+    .header-titles {
+      display: flex;
+      flex-direction: column;
+    }
+
+    .system-title {
+      font-size: 17px;
+      font-weight: 900;
+      color: #0f172a;
+      letter-spacing: -0.5px;
+    }
+
+    .system-title span {
+      color: #eab308;
+    }
+
+    .system-subtitle {
+      font-size: 10px;
+      font-weight: 700;
+      color: #64748b;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+    }
+
+    .header-badge {
+      background: #0f172a;
+      color: #f8fafc;
+      font-size: 9.5px;
+      font-weight: 700;
+      padding: 4px 10px;
+      border-radius: 6px;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+    }
+
+    /* Typography */
+    h1 {
+      font-size: 17px;
+      font-weight: 800;
+      color: #0f172a;
+      margin-bottom: 4px;
+      letter-spacing: -0.3px;
+    }
+
+    h2 {
+      font-size: 13px;
+      font-weight: 800;
+      color: #0f172a;
+      margin-top: 10px;
+      margin-bottom: 6px;
+      border-left: 3.5px solid #eab308;
+      padding-left: 7px;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+
+    h3 {
+      font-size: 11.5px;
+      font-weight: 700;
+      color: #334155;
+      margin-top: 4px;
+      margin-bottom: 2px;
+    }
+
+    p {
+      margin-bottom: 8px;
+      color: #475569;
+      font-size: 11.5px;
+      text-align: justify;
+    }
+
+    /* Cards & Boxes */
+    .card {
+      background: #f8fafc;
+      border: 1px solid #e2e8f0;
+      border-radius: 6px;
+      padding: 8px 12px;
+      margin-bottom: 10px;
+    }
+
+    .card-highlight {
+      background: #fefce8;
+      border: 1px solid #fef08a;
+      border-left: 3.5px solid #ca8a04;
+    }
+
+    .card-info {
+      background: #f0f9ff;
+      border: 1px solid #bae6fd;
+      border-left: 3.5px solid #0284c7;
+    }
+
+    .card-dark {
+      background: #0f172a;
+      color: #f8fafc;
+      border-radius: 6px;
+      padding: 8px 12px;
+      margin-bottom: 8px;
+    }
+
+    /* Grid Layouts */
+    .grid-2 {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 10px;
+      margin-bottom: 8px;
+    }
+
+    .grid-3 {
+      display: grid;
+      grid-template-columns: 1fr 1fr 1fr;
+      gap: 8px;
+      margin-bottom: 10px;
+    }
+
+    .metric-box {
+      background: #ffffff;
+      border: 1px solid #e2e8f0;
+      border-radius: 6px;
+      padding: 8px 6px;
+      text-align: center;
+    }
+
+    .metric-title {
+      font-size: 9.5px;
+      color: #64748b;
+      font-weight: 700;
+      text-transform: uppercase;
+      margin-bottom: 3px;
+    }
+
+    .metric-val {
+      font-size: 13.5px;
+      font-weight: 800;
+      color: #0f172a;
+      font-family: 'JetBrains Mono', monospace;
+    }
+
+    /* Code & Terminal */
+    code, pre {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 10.5px;
+    }
+
+    pre {
+      background: #0f172a;
+      color: #f8fafc;
+      padding: 6px 10px;
+      border-radius: 5px;
+      overflow-x: auto;
+      margin-bottom: 8px;
+      line-height: 1.35;
+    }
+
+    code.inline {
+      background: #f1f5f9;
+      color: #0f172a;
+      padding: 1px 4px;
+      border-radius: 4px;
+      border: 1px solid #e2e8f0;
+      font-weight: 600;
+    }
+
+    /* Tables */
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      margin-bottom: 10px;
+      font-size: 11px;
+    }
+
+    th, td {
+      padding: 5px 7px;
+      text-align: left;
+      border-bottom: 1px solid #e2e8f0;
+    }
+
+    th {
+      background: #f1f5f9;
+      font-weight: 700;
+      color: #334155;
+      text-transform: uppercase;
+      font-size: 9.5px;
+      letter-spacing: 0.5px;
+    }
+
+    tr:nth-child(even) {
+      background: #f8fafc;
+    }
+
+    /* Diagram SVG Styles */
+    .diagram-container {
+      background: #ffffff;
+      border: 1px solid #cbd5e1;
+      border-radius: 8px;
+      padding: 10px;
+      margin-bottom: 10px;
+      text-align: center;
+    }
+
+    .diagram-caption {
+      font-size: 10px;
+      font-weight: 700;
+      color: #64748b;
+      margin-top: 5px;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+    }
+
+    /* Footer Premium */
+    .footer {
+      position: absolute;
+      bottom: 0;
+      left: 0;
+      right: 0;
+      border-top: 1.5px solid #e2e8f0;
+      padding-top: 6px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      font-size: 9.5px;
+      color: #475569;
+    }
+
+    .footer-author {
+      font-weight: 700;
+      color: #0f172a;
+    }
+
+    .footer-contacts {
+      color: #0284c7;
+      font-weight: 700;
+    }
+
+    .footer-company {
+      font-weight: 800;
+      color: #ca8a04;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+    }
+  </style>
+</head>
+<body>
+
+  <!-- ================= PAGE 1: ARQUITETURA & PORTS EXPLICADOS ================= -->
+  <div class="page">
+    <div class="header">
+      <div class="header-left">
+        <img src="assets/logo_tihightech.png" alt="TI HIGHTECH" class="header-logo-img">
+        <div class="header-titles">
+          <div class="system-title">COMAT <span>v2.0</span></div>
+          <div class="system-subtitle">Controle de Material e Recepção</div>
+        </div>
+      </div>
+      <div class="header-badge">Arquitetura de Servidor & Infraestrutura</div>
+    </div>
+
+    <h1>Guia de Engenharia e Arquitetura de Servidor — Gateway Reverse Proxy</h1>
+    <p>
+      O <strong>COMAT v2</strong> adota a arquitetura corporativa de <strong>Gateway Reverse Proxy Multi-Tenant</strong>. O servidor de borda (Nginx Host) escuta nas portas públicas 80 e 443, gerenciando os certificados SSL e despachando as conexões de forma segura para containers Docker isolados em portas locais fechadas.
+    </p>
+
+    <h2>1. Topologia de Rede e Roteamento de Requisições</h2>
+
+    <!-- Diagrama SVG Topologia Expandido -->
+    <div class="diagram-container">
+      <svg viewBox="0 0 760 230" width="100%" height="195" xmlns="http://www.w3.org/2000/svg">
+        <defs>
+          <linearGradient id="blueGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+            <stop offset="0%" stop-color="#0284c7" />
+            <stop offset="100%" stop-color="#0369a1" />
+          </linearGradient>
+          <linearGradient id="purpleGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+            <stop offset="0%" stop-color="#8b5cf6" />
+            <stop offset="100%" stop-color="#6d28d9" />
+          </linearGradient>
+        </defs>
+
+        <!-- Bloco 1: Cliente / DNS -->
+        <rect x="15" y="60" width="140" height="95" rx="8" fill="#f8fafc" stroke="#cbd5e1" stroke-width="1.5"/>
+        <text x="85" y="90" font-family="Inter" font-size="11" font-weight="800" fill="#0f172a" text-anchor="middle">CLIENTE / BROWSER</text>
+        <text x="85" y="110" font-family="JetBrains Mono" font-size="9.5" fill="#0284c7" text-anchor="middle">comat.aspa.org.br</text>
+        <text x="85" y="130" font-family="Inter" font-size="9" fill="#64748b" text-anchor="middle">DNS Tipo A ➔ 192.168.15.4</text>
+
+        <!-- Seta 1: Cliente para Nginx Host -->
+        <path d="M 155 107 L 220 107" stroke="#0284c7" stroke-width="2" stroke-dasharray="4,4" fill="none" />
+        <polygon points="220,107 212,102 212,112" fill="#0284c7" />
+        <text x="187" y="98" font-family="JetBrains Mono" font-size="8.5" font-weight="700" fill="#0369a1" text-anchor="middle">Porta 80/443</text>
+
+        <!-- Bloco 2: Nginx Host (Gateway) -->
+        <rect x="225" y="28" width="175" height="165" rx="10" fill="url(#blueGrad)"/>
+        <text x="312" y="56" font-family="Inter" font-size="13" font-weight="900" fill="#ffffff" text-anchor="middle">NGINX HOST</text>
+        <text x="312" y="74" font-family="Inter" font-size="9.5" font-weight="600" fill="#bae6fd" text-anchor="middle">(Ubuntu Server Nativo)</text>
+        
+        <rect x="238" y="86" width="150" height="26" rx="4" fill="#ffffff" opacity="0.15" />
+        <text x="312" y="103" font-family="Inter" font-size="9" font-weight="700" fill="#ffffff" text-anchor="middle">Terminação SSL / HTTPS</text>
+
+        <rect x="238" y="118" width="150" height="26" rx="4" fill="#ffffff" opacity="0.15" />
+        <text x="312" y="135" font-family="Inter" font-size="9" font-weight="700" fill="#ffffff" text-anchor="middle">Roteador Virtual Hosts</text>
+
+        <rect x="238" y="150" width="150" height="24" rx="4" fill="#0f172a" opacity="0.4" />
+        <text x="312" y="166" font-family="JetBrains Mono" font-size="8.5" fill="#38bdf8" text-anchor="middle">proxy_pass 127.0.0.1:8033</text>
+
+        <!-- Seta 2: Nginx Host para Docker COMAT -->
+        <path d="M 400 94 L 460 70" stroke="#64748b" stroke-width="2" fill="none" />
+        <polygon points="460,70 451,67 455,76" fill="#64748b" />
+        <text x="430" y="74" font-family="JetBrains Mono" font-size="8.5" font-weight="700" fill="#475569" text-anchor="middle">:8033</text>
+
+        <!-- Bloco 3A: Container COMAT v2 -->
+        <rect x="465" y="20" width="280" height="92" rx="8" fill="#f8fafc" stroke="#8b5cf6" stroke-width="1.5"/>
+        <rect x="465" y="20" width="280" height="22" rx="6" fill="url(#purpleGrad)" />
+        <text x="605" y="35" font-family="Inter" font-size="10" font-weight="800" fill="#ffffff" text-anchor="middle">DOCKER CONTAINER: COMAT v2 (comat_v2_app)</text>
+        <text x="605" y="58" font-family="Inter" font-size="9.5" font-weight="600" fill="#0f172a" text-anchor="middle">React 19 (SPA/PWA) + PHP 8.2-FPM</text>
+        <text x="605" y="76" font-family="JetBrains Mono" font-size="9" fill="#6b21a8" text-anchor="middle">PORTS: 9000/tcp, 127.0.0.1:8033->80/tcp</text>
+        <text x="605" y="94" font-family="Inter" font-size="8.5" fill="#16a34a" text-anchor="middle">✓ Blindado: Apenas a máquina local alcança a porta 8033</text>
+
+        <!-- Seta 3: Nginx Host para Futuro Container -->
+        <path d="M 400 144 L 460 158" stroke="#94a3b8" stroke-width="1.5" stroke-dasharray="3,3" fill="none" />
+        <polygon points="460,158 451,155 455,164" fill="#94a3b8" />
+        <text x="430" y="149" font-family="JetBrains Mono" font-size="8.5" font-weight="700" fill="#94a3b8" text-anchor="middle">:8034</text>
+
+        <!-- Bloco 3B: Futuro Container (Multi-App) -->
+        <rect x="465" y="126" width="280" height="68" rx="8" fill="#fafafa" stroke="#cbd5e1" stroke-width="1.5" stroke-dasharray="3,3"/>
+        <text x="605" y="150" font-family="Inter" font-size="10" font-weight="700" fill="#64748b" text-anchor="middle">FUTURO SISTEMA (APP 2)</text>
+        <text x="605" y="168" font-family="JetBrains Mono" font-size="9" fill="#64748b" text-anchor="middle">PORTS: 127.0.0.1:8034->80/tcp</text>
+        <text x="605" y="182" font-family="Inter" font-size="8" fill="#94a3b8" text-anchor="middle">Isolamento absoluto sem conflito de portas</text>
+      </svg>
+      <div class="diagram-caption">Figura 1 — Topologia de Roteamento Gateway Nginx Host para Containers Docker</div>
+    </div>
+
+    <h2>2. Entendendo a Coluna PORTS no Comando "docker ps"</h2>
+    <div class="card card-dark">
+      <code style="color:#4ade80;">$ sudo docker ps -a</code><br/>
+      <code style="color:#f8fafc; font-size:11px;">PORTS: 9000/tcp, 127.0.0.1:8033->80/tcp</code>
+    </div>
+
+    <div class="grid-2">
+      <div class="card card-info" style="margin-bottom:0;">
+        <h3 style="color:#0369a1;">A. 127.0.0.1:8033 -> 80/tcp (Porta de Aplicação)</h3>
+        <p style="font-size:10.5px; margin-bottom:3px;">
+          • <strong>127.0.0.1 (Loopback):</strong> A porta está restrita à memória local do servidor. Ninguém na rede externa consegue acessá-la diretamente, garantindo 100% de blindagem.
+        </p>
+        <p style="font-size:10.5px; margin-bottom:0;">
+          • <strong>8033 ➔ 80:</strong> O Nginx Host recebe na porta 80 pública e despacha internamente para a 8033, que o Docker entrega na porta 80 interna do container.
+        </p>
+      </div>
+
+      <div class="card card-info" style="margin-bottom:0;">
+        <h3 style="color:#0369a1;">B. 9000/tcp (Porta FastCGI do PHP-FPM)</h3>
+        <p style="font-size:10.5px; margin-bottom:3px;">
+          • A porta <code>9000/tcp</code> não possui seta (<code>-></code>). Isso significa que ela opera <strong>exclusivamente dentro da rede do container</strong> para comunicação entre o Nginx e o PHP 8.2-FPM.
+        </p>
+        <p style="font-size:10.5px; margin-bottom:0;">
+          • <strong>Zero Conflito:</strong> Não ocupa portas da máquina física e não interfere em nenhum outro software do servidor.
+        </p>
+      </div>
+    </div>
+
+    <h2>3. Vantagens Estratégicas desta Arquitetura</h2>
+    <div class="grid-3">
+      <div class="metric-box">
+        <div class="metric-title">Multi-App Real</div>
+        <div class="metric-val">10+ Containers</div>
+        <p style="font-size:9px; margin:3px 0 0; color:#64748b;">Cada sistema roda em uma porta interna (8033, 8034, 8035...) sob o mesmo IP.</p>
+      </div>
+      <div class="metric-box">
+        <div class="metric-title">SSL Centralizado</div>
+        <div class="metric-val">Borda Única</div>
+        <p style="font-size:9px; margin:3px 0 0; color:#64748b;">Certificados gerenciados no Host (/etc/nginx/ssl/) sem alterar containers.</p>
+      </div>
+      <div class="metric-box">
+        <div class="metric-title">Segurança Máxima</div>
+        <div class="metric-val">127.0.0.1</div>
+        <p style="font-size:9px; margin:3px 0 0; color:#64748b;">Containers não ficam expostos à internet direta.</p>
+      </div>
+    </div>
+
+    <div class="footer">
+      <div><span class="footer-company">TI-HIGHTECH.COM</span> — <span class="footer-author">Ulisses Ramos</span></div>
+      <div class="footer-contacts">WhatsApp: (91) 98205-8132 / (91) 98235-0249</div>
+      <div>Página 1 de 2</div>
+    </div>
+  </div>
+
+  <!-- ================= PAGE 2: GUIA OPERACIONAL, SSH NO CONTAINER & DNS ================= -->
+  <div class="page">
+    <div class="header">
+      <div class="header-left">
+        <img src="assets/logo_tihightech.png" alt="TI HIGHTECH" class="header-logo-img">
+        <div class="header-titles">
+          <div class="system-title">COMAT <span>v2.0</span></div>
+          <div class="system-subtitle">Guia Operacional & Manutenção de Servidor</div>
+        </div>
+      </div>
+      <div class="header-badge">Operações de TI & Infraestrutura</div>
+    </div>
+
+    <h1>Guia de Configuração e Acesso Administrativo</h1>
+
+    <h2>1. Configuração de DNS (Apontamento de Rede)</h2>
+    <table>
+      <thead>
+        <tr>
+          <th>Tipo</th>
+          <th>Nome / Host</th>
+          <th>Destino / IP</th>
+          <th>Finalidade</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td><code class="inline">A</code></td>
+          <td><strong>comat.aspa.org.br</strong></td>
+          <td><code class="inline">192.168.15.4</code> (IP do Servidor)</td>
+          <td>Roteia o domínio oficial para o Gateway Nginx Host</td>
+        </tr>
+        <tr>
+          <td><code class="inline">A</code> (Opcional)</td>
+          <td><strong>*.aspa.org.br</strong></td>
+          <td><code class="inline">192.168.15.4</code> (IP do Servidor)</td>
+          <td>Wildcard para futuros sistemas no mesmo servidor físico</td>
+        </tr>
+      </tbody>
+    </table>
+
+    <h2>2. Acesso ao Terminal e Comandos Dentro do Container Docker</h2>
+    <div class="card card-highlight" style="margin-bottom:8px;">
+      <pre style="margin-bottom:0; font-size:10px; padding:6px 10px;">
+# 1. Abrir Terminal Interativo (Shell) dentro do container:   sudo docker exec -it comat_v2_app sh
+# 2. Visualizar logs em tempo real (Nginx + PHP):            sudo docker logs -f comat_v2_app
+# 3. Testar sintaxe do Nginx interno:                        sudo docker exec -it comat_v2_app nginx -t
+# 4. Inspecionar status detalhado do container:              sudo docker inspect comat_v2_app
+      </pre>
+    </div>
+
+    <h2>3. Tabela de Portas, Serviços e Diretórios</h2>
+    <table>
+      <thead>
+        <tr>
+          <th>Serviço</th>
+          <th>Porta</th>
+          <th>Escopo</th>
+          <th>Localização / Configuração</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td><strong>Nginx Host (Gateway)</strong></td>
+          <td><code>80</code> / <code>443</code></td>
+          <td>Público / Rede Local</td>
+          <td><code>/etc/nginx/sites-available/comat_v2.conf</code></td>
+        </tr>
+        <tr>
+          <td><strong>COMAT v2 (Docker)</strong></td>
+          <td><code>8033</code></td>
+          <td>Interno (127.0.0.1)</td>
+          <td>Container <code>comat_v2_app</code> (/var/www/html)</td>
+        </tr>
+        <tr>
+          <td><strong>MySQL Server Host</strong></td>
+          <td><code>3306</code></td>
+          <td>Local / Docker Gateway</td>
+          <td>Base <code>comat_db</code> (Ubuntu Server)</td>
+        </tr>
+        <tr>
+          <td><strong>Certificados SSL</strong></td>
+          <td>-</td>
+          <td>Host Ubuntu</td>
+          <td><code>/etc/nginx/ssl/</code></td>
+        </tr>
+      </tbody>
+    </table>
+
+    <h2>4. Como Ativar Certificado SSL / HTTPS</h2>
+    <div class="grid-2">
+      <div class="card card-info" style="margin-bottom:0;">
+        <h3 style="color:#0369a1;">Opção A: Certificado Próprio (.crt / .key)</h3>
+        <p style="font-size:9.5px; margin-bottom:2px;">1. No <code>install_server.sh</code>, configure <code>USAR_SSL="sim"</code>, <code>SSL_CERT_PATH</code> e <code>SSL_KEY_PATH</code>.</p>
+        <p style="font-size:9.5px; margin-bottom:0;">2. Execute: <code>sudo bash install_server.sh</code></p>
+      </div>
+
+      <div class="card card-info" style="margin-bottom:0;">
+        <h3 style="color:#0369a1;">Opção B: Let's Encrypt / Certbot Automático</h3>
+        <p style="font-size:9.5px; margin-bottom:2px;">Com o domínio apontado, execute:</p>
+        <pre style="margin-bottom:0; padding:4px 6px; font-size:9px;">sudo apt install -y certbot python3-certbot-nginx
+sudo certbot --nginx -d comat.aspa.org.br</pre>
+      </div>
+    </div>
+
+    <h2>5. Comandos Rápidos de Diagnóstico no Servidor Host</h2>
+    <pre style="margin-bottom:0; padding:6px 10px; font-size:10px;">
+# Status do Nginx Host:    sudo systemctl status nginx && sudo nginx -t
+# Recarregar Gateway:      sudo systemctl reload nginx
+# Status dos Containers:   sudo docker ps -a
+# Atualizar Aplicacao:     cd ~/comat-build && bash atualizar.sh
+    </pre>
+
+    <div class="footer">
+      <div><span class="footer-company">TI-HIGHTECH.COM</span> — <span class="footer-author">Ulisses Ramos</span></div>
+      <div class="footer-contacts">WhatsApp: (91) 98205-8132 / (91) 98235-0249</div>
+      <div>Página 2 de 2</div>
+    </div>
+  </div>
+
+</body>
+</html>
