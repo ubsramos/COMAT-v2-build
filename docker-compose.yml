@@ -2,8 +2,6 @@
 # DOCKER COMPOSE — COMAT v2 (CONTAINER ISOLADO EM PORTA INTERNA)
 # ==============================================================================
 
-version: '3.8'
-
 services:
   comat_app:
     container_name: comat_v2_app
@@ -16,7 +14,7 @@ services:
       - "127.0.0.1:${APP_DOCKER_PORT:-8033}:80"
     volumes:
       - ./app/public:/var/www/html/public:ro
-      - ./app/backend:/var/www/html/backend:ro
+      - ./app/backend:/var/www/html/backend
       - comat_uploads:/var/www/html/backend/uploads
     env_file:
       - .env.production
