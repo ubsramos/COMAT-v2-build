@@ -405,9 +405,27 @@ if [ "$ATIVAR_AUTO_UPDATE" = "sim" ]; then
   echo -e "${GREEN}[OK] Atualizacao automatica agendada no Crontab do sistema!${NC}"
 fi
 
+# 9. Gerar ou Obter Chave SSH de Deploy (Opcional para GitHub)
+SSH_DIR="/root/.ssh"
+if [ "$REAL_USER" != "root" ] && [ -d "/home/$REAL_USER/.ssh" ]; then
+  SSH_DIR="/home/$REAL_USER/.ssh"
+fi
+mkdir -p "$SSH_DIR"
+chmod 700 "$SSH_DIR"
+
+SSH_KEY_FILE="$SSH_DIR/id_comat_deploy"
+if [ ! -f "$SSH_KEY_FILE" ]; then
+  ssh-keygen -t ed25519 -C "comat-deploy-$(hostname)" -f "$SSH_KEY_FILE" -N "" 2>/dev/null || true
+  chmod 600 "$SSH_KEY_FILE" 2>/dev/null || true
+  chmod 644 "${SSH_KEY_FILE}.pub" 2>/dev/null || true
+fi
+
+DEPLOY_KEY_PUB=$(cat "${SSH_KEY_FILE}.pub" 2>/dev/null || echo "Chave ed25519 gerada no servidor")
+
 # Ajustar propriedade dos arquivos para o usuario original
 if [ "$REAL_USER" != "root" ]; then
   chown -R "$REAL_USER:$REAL_USER" "$SCRIPT_DIR" 2>/dev/null || true
+  chown -R "$REAL_USER:$REAL_USER" "$SSH_DIR" 2>/dev/null || true
 fi
 
 # Salvar credenciais e instrucoes em arquivo
@@ -444,20 +462,60 @@ Usuario ROOT:          root (Senha: ${MYSQL_ROOT_PASS})
 Usuario da Aplicacao:  ${DB_USER} (Senha: ${DB_PASS})
 
 ==============================================================================
-[ATUALIZACAO AUTOMATICA E CONTINUA]
-Repositorio de Build:  ${REPO_BUILD_GIT}
-Atualizacao no Cron:   A cada ${INTERVALO_UPDATE_MIN} minutos
-Log de Atualizacoes:   /var/log/comat_update.log
-Atualizacao Manual:    cd ${SCRIPT_DIR} && bash atualizar.sh
+[CHAVE DE ATUALIZACAO AUTOMATICA (GITHUB DEPLOY KEY)]
+Se desejar autorizar atualizacoes via SSH:
+${DEPLOY_KEY_PUB}
+
+Responsavel / E-mail: ${RESPONSAVEL_DEPLOY}
+Repositorio de Build: ${REPO_BUILD_GIT}
+Atualizacao no Cron:  A cada ${INTERVALO_UPDATE_MIN} minutos
+Log de Atualizacoes:  /var/log/comat_update.log
+Atualizacao Manual:   cd ${SCRIPT_DIR} && bash atualizar.sh
 ==============================================================================
 EOF
 
 chmod 600 "$CREDS_FILE"
 
+# Exibição do Painel Executivo Completo no Terminal
 echo -e "\n${GREEN}${BOLD}==============================================================================${NC}"
-echo -e "${GREEN}${BOLD}             INSTALACAO E CONFIGURACAO CONCLUIDAS COM SUCESSO!                ${NC}"
+echo -e "${GREEN}${BOLD}       INSTALACAO E GATEWAY REVERSE PROXY CONCLUIDOS COM SUCESSO!             ${NC}"
 echo -e "${GREEN}${BOLD}==============================================================================${NC}"
-echo -e "Acesse a aplicacao em:  ${WHITE}${BOLD}${URL_FINAL}${NC}"
-echo -e "Ou diretamente via IP:  ${WHITE}${BOLD}http://${SERVER_IP}${NC}"
-echo -e "Credenciais salvas em:  ${YELLOW}${CREDS_FILE}${NC}"
-echo -e "Auto-inicializacao no boot: ${GREEN}ATIVADA (comat-app.service, docker, nginx, mysql, cron)${NC}\n"
+
+echo -e "\n${WHITE}${BOLD}DOMINIO CONFIGURADO:${NC}    ${CYAN}${DOMINIO_SISTEMA}${NC}"
+echo -e "${WHITE}${BOLD}URL DE ACESSO:${NC}          ${GREEN}${BOLD}${URL_FINAL}${NC} (ou http://${SERVER_IP})"
+echo -e "${WHITE}${BOLD}PORTA INTERNA DOCKER:${NC}   ${YELLOW}127.0.0.1:${APP_DOCKER_PORT}${NC}"
+echo -e "${WHITE}${BOLD}MODO SSL/HTTPS:${NC}         ${USAR_SSL} (Certificados em /etc/nginx/ssl/)"
+echo -e "${WHITE}${BOLD}AUTO-BOOT NO REBOOT:${NC}    ${GREEN}ATIVADO${NC} (comat-app.service, docker, nginx, mysql, cron)"
+
+echo -e "\n${BLUE}------------------------------------------------------------------------------${NC}"
+echo -e "${WHITE}${BOLD}[USUARIO ADMINISTRADOR PADRAO]${NC}"
+echo -e "Usuario:  ${CYAN}${BOLD}admin${NC}"
+echo -e "Senha:    ${YELLOW}${BOLD}admin123${NC}"
+
+echo -e "\n${BLUE}------------------------------------------------------------------------------${NC}"
+echo -e "${WHITE}${BOLD}[BANCO DE DADOS (MySQL NATIVO)]${NC}"
+echo -e "Host:             127.0.0.1 (Local) / ${DOCKER_GATEWAY} (Docker Gateway)"
+echo -e "Porta:            3306"
+echo -e "Database:         ${CYAN}${DB_NAME}${NC}"
+echo -e "Usuario ROOT:     root (Senha: ${MYSQL_ROOT_PASS})"
+echo -e "Usuario App:      ${DB_USER} (Senha: ${DB_PASS})"
+
+echo -e "\n${BLUE}------------------------------------------------------------------------------${NC}"
+echo -e "${WHITE}${BOLD}[CONFIGURACAO DE DNS NECESSARIA]${NC}"
+echo -e "Apontar entrada DNS tipo A de ${CYAN}${DOMINIO_SISTEMA}${NC} para o IP ${YELLOW}${SERVER_IP}${NC}"
+
+echo -e "\n${MAGENTA}${BOLD}==============================================================================${NC}"
+echo -e "${MAGENTA}${BOLD}    CHAVE DE ATUALIZACAO AUTOMATICA DO SISTEMA (GITHUB DEPLOY KEY)            ${NC}"
+echo -e "${MAGENTA}${BOLD}==============================================================================${NC}"
+echo -e "\nSE VOCE DESEJA QUE ESTE SERVIDOR RECEBA ATUALIZACOES DO COMAT v2:"
+echo -e "Copie a chave publica abaixo e envie para o responsavel pela atualizacao:"
+echo -e "Responsavel / E-mail: ${CYAN}${RESPONSAVEL_DEPLOY}${NC}\n"
+echo -e "${WHITE}${BOLD}${DEPLOY_KEY_PUB}${NC}\n"
+echo -e "${YELLOW}INSTRUCOES PARA O RESPONSAVEL / ADMINISTRADOR:${NC}"
+echo -e "1. Cadastre a chave no GitHub: ${CYAN}https://github.com/ubsramos/COMAT-v2-build/settings/keys${NC}"
+echo -e "2. Deixe a opcao 'Allow write access' ${BOLD}DESMARCADA${NC} (Somente Leitura)."
+echo -e "3. Apos o cadastro, para atualizar o sistema basta rodar: ${GREEN}bash atualizar.sh${NC}"
+
+echo -e "\n${BLUE}==============================================================================${NC}"
+echo -e "As credenciais completas foram salvas em: ${YELLOW}${CREDS_FILE}${NC}"
+echo -e "${BLUE}==============================================================================${NC}\n"
