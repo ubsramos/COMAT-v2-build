@@ -7,23 +7,20 @@ export PATH="/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:$PATH"
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 cd "$SCRIPT_DIR" || exit 1
 
-# Configura chave SSH de deploy explicitamente se existir
-if [ -f "/root/.ssh/id_comat_deploy" ]; then
-    export GIT_SSH_COMMAND="ssh -i /root/.ssh/id_comat_deploy -o StrictHostKeyChecking=no"
-elif [ -f "$HOME/.ssh/id_comat_deploy" ]; then
-    export GIT_SSH_COMMAND="ssh -i $HOME/.ssh/id_comat_deploy -o StrictHostKeyChecking=no"
-fi
+BUILD_REPO="https://github.com/ubsramos/COMAT-v2-build.git"
 
 # Garante que o diretorio e um repositorio git configurado
 if [ ! -d ".git" ]; then
     git init -b main >/dev/null 2>&1 || true
-    git remote add origin "git@github.com:ubsramos/COMAT-v2-build.git" >/dev/null 2>&1 || git remote set-url origin "git@github.com:ubsramos/COMAT-v2-build.git" >/dev/null 2>&1 || true
+    git remote add origin "$BUILD_REPO" >/dev/null 2>&1 || git remote set-url origin "$BUILD_REPO" >/dev/null 2>&1 || true
     git fetch origin main >/dev/null 2>&1 || true
     git reset --hard origin/main >/dev/null 2>&1 || true
     git branch --set-upstream-to=origin/main main >/dev/null 2>&1 || true
+else
+    git remote set-url origin "$BUILD_REPO" >/dev/null 2>&1 || true
 fi
 
-# Executa fetch
+# Executa fetch silencioso
 git fetch origin main >/dev/null 2>&1 || exit 0
 
 LOCAL_HASH=$(git rev-parse HEAD 2>/dev/null)
@@ -51,7 +48,7 @@ if [ -n "$LOCAL_HASH" ] && [ -n "$REMOTE_HASH" ] && [ "$LOCAL_HASH" != "$REMOTE_
     echo "[$(date '+%Y-%m-%d %H:%M:%S')] Atualizacao e migracao concluidas com sucesso!"
     echo "=============================================================================="
 else
-    # Se executado interativamente no terminal (nao pelo cron), mostra mensagem informativa
+    # Se executado interativamente no terminal, exibe status
     if [ -t 1 ]; then
         echo "[$(date '+%Y-%m-%d %H:%M:%S')] O sistema ja esta na versao mais recente ($LOCAL_HASH)."
     fi

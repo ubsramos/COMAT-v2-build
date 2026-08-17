@@ -17,30 +17,37 @@ echo -e "${BLUE}================================================================
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 cd "$SCRIPT_DIR"
 
-# Configura chave SSH de deploy explicitamente se existir
-if [ -f "/root/.ssh/id_comat_deploy" ]; then
-    export GIT_SSH_COMMAND="ssh -i /root/.ssh/id_comat_deploy -o StrictHostKeyChecking=no"
-elif [ -f "$HOME/.ssh/id_comat_deploy" ]; then
-    export GIT_SSH_COMMAND="ssh -i $HOME/.ssh/id_comat_deploy -o StrictHostKeyChecking=no"
-fi
+BUILD_REPO="https://github.com/ubsramos/COMAT-v2-build.git"
 
 # Inicializa Git se a pasta foi criada via .tar.gz
 if [ ! -d ".git" ]; then
     echo -e "${YELLOW}Inicializando conexao Git com o repositorio COMAT-v2-build...${NC}"
     git init -b main
-    git remote add origin "git@github.com:ubsramos/COMAT-v2-build.git"
+    git remote add origin "$BUILD_REPO" 2>/dev/null || git remote set-url origin "$BUILD_REPO"
     git fetch origin main
     git reset --hard origin/main
     git branch --set-upstream-to=origin/main main
+else
+    # Garante que a URL remota esta correta
+    git remote set-url origin "$BUILD_REPO" 2>/dev/null || true
 fi
 
-echo -e "\n${CYAN}[1/3] Baixando versao compilada mais recente...${NC}"
-git pull origin main
+echo -e "\n${CYAN}[1/3] Baixando versao compilada mais recente do GitHub...${NC}"
+git fetch origin main
+git reset --hard origin/main
 
 echo -e "\n${CYAN}[2/3] Recarregando containers Docker...${NC}"
-docker compose up -d --build --remove-orphans || docker-compose up -d --build --remove-orphans
+if docker compose version >/dev/null 2>&1; then
+    docker compose up -d --build --remove-orphans
+else
+    docker-compose up -d --build --remove-orphans
+fi
 
 echo -e "\n${CYAN}[3/3] Verificando e migrando estrutura do banco de dados...${NC}"
-docker compose exec -T app php /var/www/html/api/db_migrate.php 2>/dev/null || docker-compose exec -T app php /var/www/html/api/db_migrate.php 2>/dev/null || true
+if docker compose version >/dev/null 2>&1; then
+    docker compose exec -T app php /var/www/html/api/db_migrate.php 2>/dev/null || true
+else
+    docker-compose exec -T app php /var/www/html/api/db_migrate.php 2>/dev/null || true
+fi
 
 echo -e "\n${GREEN}[OK] COMAT v2 atualizado e banco sincronizado com sucesso!${NC}\n"
