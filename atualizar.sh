@@ -22,19 +22,17 @@ BUILD_REPO="https://github.com/ubsramos/COMAT-v2-build.git"
 # Inicializa Git se a pasta foi criada via .tar.gz
 if [ ! -d ".git" ]; then
     echo -e "${YELLOW}Inicializando conexao Git com o repositorio COMAT-v2-build...${NC}"
-    git init -b main
-    git remote add origin "$BUILD_REPO" 2>/dev/null || git remote set-url origin "$BUILD_REPO"
-    git fetch origin main
-    git reset --hard origin/main
-    git branch --set-upstream-to=origin/main main
+    git init -b main 2>/dev/null || git init 2>/dev/null || true
+    git remote add origin "$BUILD_REPO" 2>/dev/null || git remote set-url origin "$BUILD_REPO" 2>/dev/null || true
 else
-    # Garante que a URL remota esta correta
     git remote set-url origin "$BUILD_REPO" 2>/dev/null || true
 fi
 
 echo -e "\n${CYAN}[1/3] Baixando versao compilada mais recente do GitHub...${NC}"
 git fetch origin main
 git reset --hard origin/main
+git branch -M main 2>/dev/null || true
+git branch --set-upstream-to=origin/main main 2>/dev/null || true
 
 echo -e "\n${CYAN}[2/3] Recarregando containers Docker...${NC}"
 if docker compose version >/dev/null 2>&1; then
