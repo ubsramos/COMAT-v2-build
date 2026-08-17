@@ -18,7 +18,7 @@ SCHEMA_FILE="database/schema_comat.sql" # Caminho do dump/schema inicial do banc
 RESPONSAVEL_DEPLOY="ubsramos@gmail.com" # E-mail do responsavel pelo deploy/GitHub
 ATIVAR_AUTO_UPDATE="sim"                # Ativar verificacao periodica automatica no Crontab ("sim" ou "nao")
 INTERVALO_UPDATE_MIN="10"               # Intervalo da verificacao em minutos (ex: 10)
-REPO_BUILD_GIT="https://github.com/ubsramos/COMAT-v2-build.git" # Repositorio de Build (HTTPS Publico ou SSH)
+REPO_BUILD_GIT="https://github.com/ubsramos/COMAT-v2-build.git" # Repositorio de Build
 
 
 # ==============================================================================
@@ -54,6 +54,9 @@ fi
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 cd "$SCRIPT_DIR"
 
+# Evita o erro 'dubious ownership' do Git ao rodar como root em pasta de usuario
+git config --global --add safe.directory "*" 2>/dev/null || true
+
 # Detectar IP da maquina na rede local
 SERVER_IP=$(hostname -I | awk '{print $1}')
 if [ -z "$SERVER_IP" ]; then
@@ -67,7 +70,7 @@ export DEBIAN_FRONTEND=noninteractive
 export NEEDRESTART_MODE=a
 
 # 1. Atualizar sistema e instalar ferramentas basicas + Nginx no Host
-echo -e "${CYAN}[1/6] Atualizando pacotes e instalando Nginx, Git e Cron no Host Ubuntu...${NC}"
+echo -e "${CYAN}[1/8] Atualizando pacotes e instalando Nginx, Git e Cron no Host Ubuntu...${NC}"
 apt-get update -y
 apt-get install -y nginx curl wget git ufw net-tools ca-certificates gnupg lsb-release openssl cron
 
@@ -75,7 +78,7 @@ systemctl enable --now nginx 2>/dev/null || true
 systemctl enable --now cron 2>/dev/null || true
 
 # 2. Instalacao e Configuracao do MySQL Server
-echo -e "\n${CYAN}[2/6] Instalando e Configurando MySQL Server Nativo...${NC}"
+echo -e "\n${CYAN}[2/8] Instalando e Configurando MySQL Server Nativo...${NC}"
 if ! command -v mysql >/dev/null 2>&1; then
   apt-get install -y mysql-server
 fi
@@ -108,7 +111,7 @@ else
 fi
 
 # 3. Restauracao do Schema Inicial do COMAT
-echo -e "\n${CYAN}[3/6] Restaurando Schema do Banco de Dados (${DB_NAME})...${NC}"
+echo -e "\n${CYAN}[3/8] Restaurando Schema do Banco de Dados (${DB_NAME})...${NC}"
 FULL_SCHEMA_PATH="$SCRIPT_DIR/$SCHEMA_FILE"
 if [ -f "$FULL_SCHEMA_PATH" ]; then
   if mysql -u root -p"${MYSQL_ROOT_PASS}" "${DB_NAME}" < "$FULL_SCHEMA_PATH" 2>/dev/null; then
@@ -124,7 +127,7 @@ else
 fi
 
 # 4. Instalacao Oficial e Limpa do Docker & Docker Compose
-echo -e "\n${CYAN}[4/6] Verificando e Instalando Docker e Docker Compose...${NC}"
+echo -e "\n${CYAN}[4/8] Verificando e Instalando Docker e Docker Compose...${NC}"
 
 if ! command -v docker >/dev/null 2>&1; then
   echo -e "${YELLOW}Instalando Docker Engine via APT...${NC}"
@@ -162,8 +165,22 @@ if [ "$REAL_USER" != "root" ]; then
   usermod -aG docker "$REAL_USER" 2>/dev/null || true
 fi
 
-# 5. Configuracao do Ambiente de Producao
-echo -e "\n${CYAN}[5/6] Configurando .env.production da Aplicacao...${NC}"
+# 5. Sincronizar com o Repositorio de Build ANTES de subir o container
+echo -e "\n${CYAN}[5/8] Sincronizando arquivos com o Repositorio de Build (${REPO_BUILD_GIT})...${NC}"
+if [ ! -d "$SCRIPT_DIR/.git" ]; then
+  git init -b main 2>/dev/null || git init 2>/dev/null || true
+fi
+
+git remote remove origin 2>/dev/null || true
+git remote add origin "$REPO_BUILD_GIT" 2>/dev/null || true
+git fetch origin main 2>/dev/null || true
+git reset --hard origin/main 2>/dev/null || true
+git branch -M main 2>/dev/null || true
+git branch --set-upstream-to=origin/main main 2>/dev/null || true
+echo -e "${GREEN}[OK] Codigo sincronizado com a versao mais recente do GitHub.${NC}"
+
+# 6. Configuracao do Ambiente de Producao
+echo -e "\n${CYAN}[6/8] Configurando .env.production e Subindo Container Docker...${NC}"
 
 DOCKER_GATEWAY=$(docker network inspect bridge --format='{{range .IPAM.Config}}{{.Gateway}}{{end}}' 2>/dev/null || echo "172.17.0.1")
 if [ -z "$DOCKER_GATEWAY" ]; then
@@ -186,8 +203,6 @@ EOF
 
 echo -e "${GREEN}[OK] Arquivo .env.production configurado.${NC}"
 
-# 6. Subir Container na Porta Interna e Configurar Reverse Proxy no Nginx Host
-echo -e "\n${CYAN}[6/6] Subindo Container COMAT (Porta ${APP_DOCKER_PORT}) e Configurando Nginx Host...${NC}"
 mkdir -p "$SCRIPT_DIR/app/backend/uploads"
 chmod -R 777 "$SCRIPT_DIR/app/backend/uploads"
 
@@ -235,7 +250,8 @@ systemctl daemon-reload 2>/dev/null || true
 systemctl enable comat-app.service 2>/dev/null || true
 echo -e "${GREEN}[OK] Servico comat-app.service habilitado no boot do sistema.${NC}"
 
-# Criacao do Virtual Host no Nginx do Host
+# 7. Criacao do Virtual Host no Nginx do Host
+echo -e "\n${CYAN}[7/8] Configurando Nginx Gateway e Firewall...${NC}"
 NGINX_SITE_CONF="/etc/nginx/sites-available/comat_v2.conf"
 mkdir -p /etc/nginx/sites-available /etc/nginx/sites-enabled /etc/nginx/ssl
 
@@ -359,23 +375,15 @@ nginx -t
 systemctl reload nginx || systemctl restart nginx
 echo -e "${GREEN}[OK] Nginx Gateway configurado e ativo.${NC}"
 
-# 7. Configuracao de Firewall Basico (UFW)
-echo -e "\n${CYAN}[7/7] Ajustando Regras de Firewall (UFW)...${NC}"
+# Ajustar Regras de Firewall (UFW)
 ufw allow 22/tcp 2>/dev/null || true
 ufw allow 80/tcp 2>/dev/null || true
 ufw allow 443/tcp 2>/dev/null || true
 ufw --force enable 2>/dev/null || true
 echo -e "${GREEN}[OK] Firewall configurado (Portas 22, 80 e 443 liberadas).${NC}"
 
-# 8. Vincular ao Repositorio de Build e Configurar Crontab Automatico
-echo -e "\n${CYAN}[8/8] Vinculando diretorio ao Repositorio de Build (${REPO_BUILD_GIT})...${NC}"
-cd "$SCRIPT_DIR"
-git init -b main 2>/dev/null || git init 2>/dev/null || true
-git remote add origin "$REPO_BUILD_GIT" 2>/dev/null || git remote set-url origin "$REPO_BUILD_GIT" 2>/dev/null || true
-git fetch origin main 2>/dev/null || true
-git reset --hard origin/main 2>/dev/null || true
-git branch --set-upstream-to=origin/main main 2>/dev/null || true
-
+# 8. Configurar Agendamento Automatico no Crontab
+echo -e "\n${CYAN}[8/8] Configurando Agendamento de Atualizacao Automatica (Crontab)...${NC}"
 if [ "$ATIVAR_AUTO_UPDATE" = "sim" ]; then
   echo -e "${YELLOW}Configurando agendamento automatico no Crontab (A cada ${INTERVALO_UPDATE_MIN} minutos)...${NC}"
   
@@ -395,6 +403,11 @@ if [ "$ATIVAR_AUTO_UPDATE" = "sim" ]; then
   CRON_ENTRY="*/${INTERVALO_UPDATE_MIN} * * * * bash $SCRIPT_DIR/auto_check_update.sh >> /var/log/comat_update.log 2>&1"
   (crontab -l 2>/dev/null | grep -v "auto_check_update.sh" ; echo "$CRON_ENTRY") | crontab -
   echo -e "${GREEN}[OK] Atualizacao automatica agendada no Crontab do sistema!${NC}"
+fi
+
+# Ajustar propriedade dos arquivos para o usuario original
+if [ "$REAL_USER" != "root" ]; then
+  chown -R "$REAL_USER:$REAL_USER" "$SCRIPT_DIR" 2>/dev/null || true
 fi
 
 # Salvar credenciais e instrucoes em arquivo
