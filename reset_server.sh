@@ -37,10 +37,17 @@ if command -v docker >/dev/null 2>&1; then
   docker volume prune -f 2>/dev/null || true
 fi
 
-echo -e "${CYAN}[2/6] Limpando configuracoes de Reverse Proxy do Nginx Host...${NC}"
+echo -e "${CYAN}[2/6] Limpando configuracoes de Reverse Proxy do Nginx Host, Systemd e Crontab...${NC}"
 rm -f /etc/nginx/sites-available/comat_v2.conf
 rm -f /etc/nginx/sites-enabled/comat_v2.conf
 systemctl reload nginx 2>/dev/null || true
+
+# Limpa servico customizado do systemd e agendamento cron
+systemctl disable comat-app.service 2>/dev/null || true
+rm -f /etc/systemd/system/comat-app.service 2>/dev/null || true
+systemctl daemon-reload 2>/dev/null || true
+(crontab -l 2>/dev/null | grep -v "auto_check_update.sh") | crontab - 2>/dev/null || true
+rm -f /var/log/comat_update.log 2>/dev/null || true
 
 echo -e "${CYAN}[3/6] Desinstalando e expurgando pacotes do Docker...${NC}"
 systemctl stop docker.socket 2>/dev/null || true
