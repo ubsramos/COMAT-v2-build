@@ -60,30 +60,26 @@ if [ -z "$SERVER_IP" ]; then
   SERVER_IP="127.0.0.1"
 fi
 
-REAL_USER=${SUDO_USER:-$USER}
+REAL_USER="${SUDO_USER:-$USER}"
 
+# Evitar prompts interativos do apt
 export DEBIAN_FRONTEND=noninteractive
 export NEEDRESTART_MODE=a
 
 # 1. Atualizar sistema e instalar ferramentas basicas + Nginx no Host
-echo -e "${CYAN}[1/6] Atualizando pacotes e instalando Nginx e Cron no Host Ubuntu...${NC}"
+echo -e "${CYAN}[1/6] Atualizando pacotes e instalando Nginx, Git e Cron no Host Ubuntu...${NC}"
 apt-get update -y
 apt-get install -y nginx curl wget git ufw net-tools ca-certificates gnupg lsb-release openssl cron
 
-systemctl enable nginx || true
-systemctl start nginx || true
-systemctl enable cron || true
-systemctl start cron || true
+systemctl enable --now nginx 2>/dev/null || true
+systemctl enable --now cron 2>/dev/null || true
 
 # 2. Instalacao e Configuracao do MySQL Server
 echo -e "\n${CYAN}[2/6] Instalando e Configurando MySQL Server Nativo...${NC}"
 if ! command -v mysql >/dev/null 2>&1; then
   apt-get install -y mysql-server
-  systemctl enable mysql || true
-  systemctl start mysql || true
-else
-  systemctl start mysql 2>/dev/null || true
 fi
+systemctl enable --now mysql 2>/dev/null || systemctl enable --now mariadb 2>/dev/null || true
 
 echo -e "${YELLOW}Configurando bind-address do MySQL para conexoes locais e Docker...${NC}"
 if [ -f /etc/mysql/mysql.conf.d/mysqld.cnf ]; then
@@ -143,10 +139,11 @@ if ! command -v docker >/dev/null 2>&1; then
   curl -fsSL https://get.docker.com | sh || true
 fi
 
+# Habilitar Docker para inicializacao automatica no boot do servidor
 systemctl daemon-reload 2>/dev/null || true
 systemctl unmask docker.service 2>/dev/null || true
 systemctl unmask docker.socket 2>/dev/null || true
-systemctl enable --now docker 2>/dev/null || true
+systemctl enable --now docker containerd docker.socket docker.service 2>/dev/null || true
 systemctl start docker 2>/dev/null || true
 
 if ! command -v docker >/dev/null 2>&1; then
@@ -154,7 +151,7 @@ if ! command -v docker >/dev/null 2>&1; then
   exit 1
 fi
 
-echo -e "${GREEN}[OK] Docker instalado e ativo: $(docker --version)${NC}"
+echo -e "${GREEN}[OK] Docker instalado e ativo no boot do sistema: $(docker --version)${NC}"
 
 if ! docker compose version >/dev/null 2>&1 && command -v docker-compose >/dev/null 2>&1; then
   mkdir -p /usr/local/lib/docker/cli-plugins
@@ -213,6 +210,31 @@ $COMPOSE_CMD -f "$SCRIPT_DIR/docker-compose.yml" up -d --build
 echo -e "${YELLOW}Validando estrutura de tabelas e colunas no MySQL...${NC}"
 $COMPOSE_CMD -f "$SCRIPT_DIR/docker-compose.yml" exec -T app php /var/www/html/api/db_migrate.php 2>/dev/null || true
 
+# Criacao do Servico Systemd Dedicado para Garantir Auto-Inicializacao do COMAT no Boot
+echo -e "${YELLOW}Criando servico Systemd para auto-inicializacao do COMAT no boot...${NC}"
+DOCKER_BIN=$(command -v docker || echo "/usr/bin/docker")
+cat <<EOF > /etc/systemd/system/comat-app.service
+[Unit]
+Description=COMAT v2 — Inicializacao Automatica dos Containers Docker
+Requires=docker.service
+After=docker.service network.target mysql.service nginx.service
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+WorkingDirectory=${SCRIPT_DIR}
+ExecStart=${DOCKER_BIN} compose -f ${SCRIPT_DIR}/docker-compose.yml up -d --remove-orphans
+ExecStop=${DOCKER_BIN} compose -f ${SCRIPT_DIR}/docker-compose.yml stop
+TimeoutStartSec=0
+
+[Install]
+WantedBy=multi-user.target
+EOF
+
+systemctl daemon-reload 2>/dev/null || true
+systemctl enable comat-app.service 2>/dev/null || true
+echo -e "${GREEN}[OK] Servico comat-app.service habilitado no boot do sistema.${NC}"
+
 # Criacao do Virtual Host no Nginx do Host
 NGINX_SITE_CONF="/etc/nginx/sites-available/comat_v2.conf"
 mkdir -p /etc/nginx/sites-available /etc/nginx/sites-enabled /etc/nginx/ssl
@@ -248,14 +270,10 @@ if [ "$USAR_SSL" = "sim" ]; then
     echo -e "${GREEN}[OK] Utilizando certificado SSL fornecido:${NC}"
     echo -e "  Certificado: ${RESOLVED_CERT}"
     echo -e "  Chave:       ${RESOLVED_KEY}"
-    cp "$RESOLVED_CERT" "$SSL_CERT"
-    cp "$RESOLVED_KEY" "$SSL_KEY"
-    chmod 644 "$SSL_CERT"
-    chmod 600 "$SSL_KEY"
-  elif [ -f "$SSL_CERT" ] && [ -f "$SSL_KEY" ]; then
-    echo -e "${GREEN}[OK] Utilizando certificados ja existentes em /etc/nginx/ssl/...${NC}"
+    cp -f "$RESOLVED_CERT" "$SSL_CERT"
+    cp -f "$RESOLVED_KEY" "$SSL_KEY"
   else
-    echo -e "${YELLOW}Certificado nao encontrado em '${SSL_CERT_PATH}'. Gerando autoassinado para testes em ${SSL_CERT}...${NC}"
+    echo -e "${YELLOW}[AVISO] Certificado nao encontrado nos caminhos informados. Gerando certificado SSL Autoassinado...${NC}"
     openssl req -x509 -nodes -days 3650 -newkey rsa:2048 \
       -keyout "$SSL_KEY" \
       -out "$SSL_CERT" \
@@ -283,8 +301,11 @@ server {
     ssl_certificate_key ${SSL_KEY};
     ssl_protocols TLSv1.2 TLSv1.3;
     ssl_ciphers HIGH:!aNULL:!MD5;
+    ssl_prefer_server_ciphers on;
+    ssl_session_cache shared:SSL:10m;
+    ssl_session_timeout 1d;
 
-    client_max_body_size 64M;
+    client_max_body_size 50M;
 
     location / {
         proxy_pass http://127.0.0.1:${APP_DOCKER_PORT};
@@ -296,11 +317,13 @@ server {
         proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
         proxy_set_header X-Forwarded-Proto \$scheme;
         proxy_cache_bypass \$http_upgrade;
-        proxy_read_timeout 180s;
+        proxy_read_timeout 300s;
+        proxy_connect_timeout 75s;
     }
 }
 EOF
   URL_FINAL="https://${DOMINIO_SISTEMA}"
+
 else
   echo -e "${YELLOW}Configurando Nginx Host em HTTP para ${DOMINIO_SISTEMA} e ${SERVER_IP}...${NC}"
   cat <<EOF > "$NGINX_SITE_CONF"
@@ -309,7 +332,7 @@ server {
     listen [::]:80;
     server_name ${DOMINIO_SISTEMA} ${SERVER_IP};
 
-    client_max_body_size 64M;
+    client_max_body_size 50M;
 
     location / {
         proxy_pass http://127.0.0.1:${APP_DOCKER_PORT};
@@ -321,78 +344,37 @@ server {
         proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
         proxy_set_header X-Forwarded-Proto \$scheme;
         proxy_cache_bypass \$http_upgrade;
-        proxy_read_timeout 180s;
+        proxy_read_timeout 300s;
+        proxy_connect_timeout 75s;
     }
 }
 EOF
   URL_FINAL="http://${DOMINIO_SISTEMA}"
 fi
 
-# Habilita o site no Nginx
 ln -sf "$NGINX_SITE_CONF" /etc/nginx/sites-enabled/comat_v2.conf
+rm -f /etc/nginx/sites-enabled/default 2>/dev/null || true
 
-# Se existir o arquivo default que conflita na porta 80, desabilita
-if [ -f /etc/nginx/sites-enabled/default ]; then
-  rm -f /etc/nginx/sites-enabled/default
-fi
-
-# Valida sintaxe e recarrega Nginx
 nginx -t
 systemctl reload nginx || systemctl restart nginx
+echo -e "${GREEN}[OK] Nginx Gateway configurado e ativo.${NC}"
 
-# 7. Gerar Chave SSH de Deploy Somente Leitura (GitHub Deploy Key)
-echo -e "\n${CYAN}[7/7] Configurando Chave de Atualizacao Automatica (Deploy Key)...${NC}"
-SSH_DIR="/root/.ssh"
-mkdir -p "$SSH_DIR"
-chmod 700 "$SSH_DIR"
-SSH_KEY_FILE="$SSH_DIR/id_comat_deploy"
-
-if [ ! -f "$SSH_KEY_FILE" ]; then
-  ssh-keygen -t ed25519 -C "comat-deploy-$(hostname)" -f "$SSH_KEY_FILE" -N "" >/dev/null 2>&1 || true
-  chmod 600 "$SSH_KEY_FILE" 2>/dev/null || true
-  chmod 644 "${SSH_KEY_FILE}.pub" 2>/dev/null || true
-fi
-
-# Se executado via sudo por um usuario normal, espelha a chave para a home dele tambem
-if [ -n "$SUDO_USER" ] && [ "$SUDO_USER" != "root" ]; then
-  USER_HOME=$(eval echo "~$SUDO_USER")
-  USER_SSH="$USER_HOME/.ssh"
-  mkdir -p "$USER_SSH"
-  chmod 700 "$USER_SSH"
-  cp -n "$SSH_KEY_FILE" "$USER_SSH/id_comat_deploy" 2>/dev/null || true
-  cp -n "${SSH_KEY_FILE}.pub" "$USER_SSH/id_comat_deploy.pub" 2>/dev/null || true
-  chown -R "$SUDO_USER:$SUDO_USER" "$USER_SSH" 2>/dev/null || true
-  
-  if ! grep -q "id_comat_deploy" "$USER_SSH/config" 2>/dev/null; then
-    cat <<EOF >> "$USER_SSH/config"
-Host github.com
-    IdentityFile $USER_SSH/id_comat_deploy
-    StrictHostKeyChecking no
-EOF
-    chown "$SUDO_USER:$SUDO_USER" "$USER_SSH/config" 2>/dev/null || true
-    chmod 600 "$USER_SSH/config" 2>/dev/null || true
-  fi
-fi
-
-if ! grep -q "id_comat_deploy" "$SSH_DIR/config" 2>/dev/null; then
-  cat <<EOF >> "$SSH_DIR/config"
-Host github.com
-    IdentityFile $SSH_KEY_FILE
-    StrictHostKeyChecking no
-EOF
-  chmod 600 "$SSH_DIR/config" 2>/dev/null || true
-fi
-
-DEPLOY_KEY_PUB=$(cat "${SSH_KEY_FILE}.pub" 2>/dev/null || echo "Chave nao encontrada")
+# 7. Configuracao de Firewall Basico (UFW)
+echo -e "\n${CYAN}[7/7] Ajustando Regras de Firewall (UFW)...${NC}"
+ufw allow 22/tcp 2>/dev/null || true
+ufw allow 80/tcp 2>/dev/null || true
+ufw allow 443/tcp 2>/dev/null || true
+ufw --force enable 2>/dev/null || true
+echo -e "${GREEN}[OK] Firewall configurado (Portas 22, 80 e 443 liberadas).${NC}"
 
 # 8. Vincular ao Repositorio de Build e Configurar Crontab Automatico
-if [ ! -d "$SCRIPT_DIR/.git" ]; then
-  echo -e "\n${CYAN}[8/8] Vinculando diretorio ao Repositorio de Build (${REPO_BUILD_GIT})...${NC}"
-  cd "$SCRIPT_DIR"
-  git init >/dev/null 2>&1 || true
-  git remote add origin "$REPO_BUILD_GIT" >/dev/null 2>&1 || git remote set-url origin "$REPO_BUILD_GIT" >/dev/null 2>&1 || true
-  git branch -M main >/dev/null 2>&1 || true
-fi
+echo -e "\n${CYAN}[8/8] Vinculando diretorio ao Repositorio de Build (${REPO_BUILD_GIT})...${NC}"
+cd "$SCRIPT_DIR"
+git init -b main 2>/dev/null || git init 2>/dev/null || true
+git remote add origin "$REPO_BUILD_GIT" 2>/dev/null || git remote set-url origin "$REPO_BUILD_GIT" 2>/dev/null || true
+git fetch origin main 2>/dev/null || true
+git reset --hard origin/main 2>/dev/null || true
+git branch --set-upstream-to=origin/main main 2>/dev/null || true
 
 if [ "$ATIVAR_AUTO_UPDATE" = "sim" ]; then
   echo -e "${YELLOW}Configurando agendamento automatico no Crontab (A cada ${INTERVALO_UPDATE_MIN} minutos)...${NC}"
@@ -400,9 +382,9 @@ if [ "$ATIVAR_AUTO_UPDATE" = "sim" ]; then
   if ! command -v crontab >/dev/null 2>&1; then
     apt-get update -y >/dev/null 2>&1 || true
     apt-get install -y cron >/dev/null 2>&1 || true
-    systemctl enable cron >/dev/null 2>&1 || true
-    systemctl start cron >/dev/null 2>&1 || true
   fi
+  systemctl enable --now cron 2>/dev/null || true
+  systemctl start cron 2>/dev/null || true
 
   chmod +x "$SCRIPT_DIR/auto_check_update.sh" 2>/dev/null || true
   chmod +x "$SCRIPT_DIR/atualizar.sh" 2>/dev/null || true
@@ -449,55 +431,20 @@ Usuario ROOT:          root (Senha: ${MYSQL_ROOT_PASS})
 Usuario da Aplicacao:  ${DB_USER} (Senha: ${DB_PASS})
 
 ==============================================================================
-[CHAVE DE ATUALIZACAO AUTOMATICA (GITHUB DEPLOY KEY)]
-Chave Publica:
-${DEPLOY_KEY_PUB}
-
-Envie esta chave para: ${RESPONSAVEL_DEPLOY}
-Para que o servidor receba atualizacoes via: bash atualizar.sh
+[ATUALIZACAO AUTOMATICA E CONTINUA]
+Repositorio de Build:  ${REPO_BUILD_GIT}
+Atualizacao no Cron:   A cada ${INTERVALO_UPDATE_MIN} minutos
+Log de Atualizacoes:   /var/log/comat_update.log
+Atualizacao Manual:    cd ${SCRIPT_DIR} && bash atualizar.sh
 ==============================================================================
 EOF
+
 chmod 600 "$CREDS_FILE"
 
-# Exibicao do Banner Final no Terminal
-echo -e "\n${GREEN}${BOLD}"
-echo "=============================================================================="
-echo "        INSTALACAO E GATEWAY REVERSE PROXY CONCLUIDOS COM SUCESSO!            "
-echo "=============================================================================="
-echo -e "${NC}"
-echo -e "${BOLD}DOMINIO CONFIGURADO:${NC}    ${CYAN}${DOMINIO_SISTEMA}${NC}"
-echo -e "${BOLD}URL DE ACESSO:${NC}          ${CYAN}${URL_FINAL}${NC} (ou ${CYAN}http://${SERVER_IP}${NC})"
-echo -e "${BOLD}PORTA INTERNA DOCKER:${NC}  ${YELLOW}127.0.0.1:${APP_DOCKER_PORT}${NC}"
-echo -e "${BOLD}MODO SSL/HTTPS:${NC}         ${YELLOW}${USAR_SSL}${NC} (Certificados em /etc/nginx/ssl/)"
-echo -e "------------------------------------------------------------------------------"
-echo -e "${BOLD}USUARIO ADMIN PADRAO:${NC}   ${YELLOW}admin${NC}"
-echo -e "${BOLD}SENHA ADMIN PADRAO:${NC}     ${YELLOW}admin123${NC}"
-echo -e "------------------------------------------------------------------------------"
-echo -e "${BOLD}BANCO DE DADOS (MySQL):${NC}  ${DB_NAME}"
-echo -e "${BOLD}USUARIO APP MYSQL:${NC}      ${DB_USER}"
-echo -e "${BOLD}SENHA APP MYSQL:${NC}        ${GREEN}${DB_PASS}${NC}"
-echo "=============================================================================="
-echo -e "${BOLD}CONFIGURACAO DE DNS NECESSARIA:${NC}"
-echo -e "Apontar entrada DNS tipo A de ${CYAN}${DOMINIO_SISTEMA}${NC} para o IP ${CYAN}${SERVER_IP}${NC}"
-echo "=============================================================================="
-
-# CAIXA DESTACADA DA CHAVE DE ATUALIZACAO GITHUB
-echo -e "\n${MAGENTA}${BOLD}"
-echo "=============================================================================="
-echo "      CHAVE DE ATUALIZACAO AUTOMATICA DO SISTEMA (GITHUB DEPLOY KEY)          "
-echo "=============================================================================="
-echo -e "${NC}"
-echo -e "${YELLOW}${BOLD}SE VOCE DESEJA QUE ESTE SERVIDOR RECEBA ATUALIZACOES DO COMAT v2:${NC}"
-echo -e "Copie a chave publica abaixo e envie para o responsavel pela atualizacao:"
-echo -e "${BOLD}Responsavel / E-mail:${NC} ${CYAN}${RESPONSAVEL_DEPLOY}${NC}"
-echo -e "------------------------------------------------------------------------------"
-echo -e "${GREEN}${BOLD}${DEPLOY_KEY_PUB}${NC}"
-echo -e "------------------------------------------------------------------------------"
-echo -e "${BOLD}INSTRUCOES PARA O RESPONSAVEL / ADMINISTRADOR:${NC}"
-echo -e "1. Cadastre a chave no GitHub: ${CYAN}https://github.com/ubsramos/COMAT-v2-build/settings/keys${NC}"
-echo -e "2. Deixe a opcao 'Allow write access' ${YELLOW}DESMARCADA${NC} (Somente Leitura)."
-echo -e "3. Apos o cadastro, para atualizar o sistema basta rodar: ${CYAN}bash atualizar.sh${NC}"
-echo "=============================================================================="
-echo -e "${YELLOW}As credenciais completas foram salvas em:${NC} ${CREDS_FILE}"
-echo "=============================================================================="
-
+echo -e "\n${GREEN}${BOLD}==============================================================================${NC}"
+echo -e "${GREEN}${BOLD}             INSTALACAO E CONFIGURACAO CONCLUIDAS COM SUCESSO!                ${NC}"
+echo -e "${GREEN}${BOLD}==============================================================================${NC}"
+echo -e "Acesse a aplicacao em:  ${WHITE}${BOLD}${URL_FINAL}${NC}"
+echo -e "Ou diretamente via IP:  ${WHITE}${BOLD}http://${SERVER_IP}${NC}"
+echo -e "Credenciais salvas em:  ${YELLOW}${CREDS_FILE}${NC}"
+echo -e "Auto-inicializacao no boot: ${GREEN}ATIVADA (comat-app.service, docker, nginx, mysql, cron)${NC}\n"
