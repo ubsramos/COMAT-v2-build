@@ -16,7 +16,14 @@ echo -e "${BLUE}================================================================
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 cd "$SCRIPT_DIR"
 
-echo -e "\n${CYAN}[1/2] Baixando versao compilada mais recente...${NC}"
+# Configura chave SSH de deploy explicitamente se existir
+if [ -f "/root/.ssh/id_comat_deploy" ]; then
+    export GIT_SSH_COMMAND="ssh -i /root/.ssh/id_comat_deploy -o StrictHostKeyChecking=no"
+elif [ -f "$HOME/.ssh/id_comat_deploy" ]; then
+    export GIT_SSH_COMMAND="ssh -i $HOME/.ssh/id_comat_deploy -o StrictHostKeyChecking=no"
+fi
+
+echo -e "\n${CYAN}[1/3] Baixando versao compilada mais recente...${NC}"
 git pull origin main
 
 echo -e "\n${CYAN}[2/3] Recarregando containers Docker...${NC}"

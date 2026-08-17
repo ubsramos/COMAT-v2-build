@@ -7,9 +7,17 @@ export PATH="/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:$PATH"
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 cd "$SCRIPT_DIR" || exit 1
 
+# Configura chave SSH de deploy explicitamente se existir
+if [ -f "/root/.ssh/id_comat_deploy" ]; then
+    export GIT_SSH_COMMAND="ssh -i /root/.ssh/id_comat_deploy -o StrictHostKeyChecking=no"
+elif [ -f "$HOME/.ssh/id_comat_deploy" ]; then
+    export GIT_SSH_COMMAND="ssh -i $HOME/.ssh/id_comat_deploy -o StrictHostKeyChecking=no"
+fi
+
 # Garante que o diretorio e um repositorio git configurado
 if [ ! -d ".git" ]; then
-    exit 0
+    git init -b main >/dev/null 2>&1 || true
+    git remote add origin "git@github.com:ubsramos/COMAT-v2-build.git" >/dev/null 2>&1 || git remote set-url origin "git@github.com:ubsramos/COMAT-v2-build.git" >/dev/null 2>&1 || true
 fi
 
 # Executa fetch silencioso
