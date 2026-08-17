@@ -17,20 +17,23 @@ echo -e "${BLUE}================================================================
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 cd "$SCRIPT_DIR"
 
+# Evita o erro 'dubious ownership' do Git ao rodar como sudo/root em pastas de usuario
+git config --global --add safe.directory "*" 2>/dev/null || true
+
 BUILD_REPO="https://github.com/ubsramos/COMAT-v2-build.git"
 
-# Inicializa Git se a pasta foi criada via .tar.gz
 if [ ! -d ".git" ]; then
-    echo -e "${YELLOW}Inicializando conexao Git com o repositorio COMAT-v2-build...${NC}"
+    echo -e "${YELLOW}Inicializando repositorio Git local...${NC}"
     git init -b main 2>/dev/null || git init 2>/dev/null || true
-    git remote add origin "$BUILD_REPO" 2>/dev/null || git remote set-url origin "$BUILD_REPO" 2>/dev/null || true
-else
-    git remote set-url origin "$BUILD_REPO" 2>/dev/null || true
 fi
+
+git remote remove origin 2>/dev/null || true
+git remote add origin "$BUILD_REPO"
 
 echo -e "\n${CYAN}[1/3] Baixando versao compilada mais recente do GitHub...${NC}"
 git fetch origin main
 git reset --hard origin/main
+git clean -fd 2>/dev/null || true
 git branch -M main 2>/dev/null || true
 git branch --set-upstream-to=origin/main main 2>/dev/null || true
 
@@ -46,6 +49,11 @@ if docker compose version >/dev/null 2>&1; then
     docker compose exec -T app php /var/www/html/api/db_migrate.php 2>/dev/null || true
 else
     docker-compose exec -T app php /var/www/html/api/db_migrate.php 2>/dev/null || true
+fi
+
+REAL_USER="${SUDO_USER:-$USER}"
+if [ "$REAL_USER" != "root" ]; then
+    chown -R "$REAL_USER:$REAL_USER" "$SCRIPT_DIR" 2>/dev/null || true
 fi
 
 echo -e "\n${GREEN}[OK] COMAT v2 atualizado e banco sincronizado com sucesso!${NC}\n"
