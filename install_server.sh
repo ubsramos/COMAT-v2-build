@@ -18,7 +18,7 @@ SCHEMA_FILE="database/schema_comat.sql" # Caminho do dump/schema inicial do banc
 RESPONSAVEL_DEPLOY="ubsramos@gmail.com" # E-mail do responsavel pelo deploy/GitHub
 ATIVAR_AUTO_UPDATE="sim"                # Ativar verificacao periodica automatica no Crontab ("sim" ou "nao")
 INTERVALO_UPDATE_MIN="10"               # Intervalo da verificacao em minutos (ex: 10)
-REPO_BUILD_GIT="git@github.com:ubsramos/COMAT-v2-build.git" # Repositorio de Build
+REPO_BUILD_GIT="https://github.com/ubsramos/COMAT-v2-build.git" # Repositorio de Build (HTTPS Publico ou SSH)
 
 
 # ==============================================================================
