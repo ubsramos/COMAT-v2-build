@@ -146,19 +146,35 @@ CREATE TABLE IF NOT EXISTS `correspondencia_tipo` (
 -- 10. Tabela: correspondencia (Gestão de Correspondências e Encomendas da Recepção)
 CREATE TABLE IF NOT EXISTS `correspondencia` (
   `id` INT AUTO_INCREMENT PRIMARY KEY,
+  `data_chegada` DATETIME DEFAULT CURRENT_TIMESTAMP,
+  `tipo` VARCHAR(100) NOT NULL DEFAULT 'Carta',
   `tipo_id` INT NULL,
   `remetente` VARCHAR(255) NOT NULL,
+  `rastreio` VARCHAR(100) NULL,
+  `descricao` TEXT NULL,
+  `func_destino_id` INT NULL,
+  `depto_destino_id` INT NULL,
   `destinatario_id` INT NULL,
   `destinatario_manual` VARCHAR(255) NULL,
+  `email_destino` VARCHAR(255) NULL,
+  `recebedor_tipo` VARCHAR(50) DEFAULT 'almoxarifado',
+  `recebedor_id` INT NULL,
   `ponto_recepcao` VARCHAR(100) DEFAULT 'Recepção Central',
-  `status` VARCHAR(50) NOT NULL DEFAULT 'PENDENTE', -- PENDENTE, RETIRADO, DEVOLVIDO
+  `status` VARCHAR(50) NOT NULL DEFAULT 'aguardando', -- aguardando, retirado, devolvido
   `data_recebimento` DATETIME DEFAULT CURRENT_TIMESTAMP,
   `data_retirada` DATETIME NULL,
   `retirado_por` VARCHAR(255) NULL,
+  `retirado_por_manual` VARCHAR(255) NULL,
+  `func_retirada_id` INT NULL,
+  `obs_retirada` TEXT NULL,
+  `email_enviado` TINYINT(1) NOT NULL DEFAULT 0,
+  `email_erro` TEXT NULL,
   `observacao` TEXT NULL,
   `criado_em` DATETIME DEFAULT CURRENT_TIMESTAMP,
   CONSTRAINT `fk_corresp_tipo` FOREIGN KEY (`tipo_id`) REFERENCES `correspondencia_tipo` (`id`) ON DELETE SET NULL,
-  CONSTRAINT `fk_corresp_dest` FOREIGN KEY (`destinatario_id`) REFERENCES `funcionario` (`id`) ON DELETE SET NULL
+  CONSTRAINT `fk_corresp_dest` FOREIGN KEY (`destinatario_id`) REFERENCES `funcionario` (`id`) ON DELETE SET NULL,
+  CONSTRAINT `fk_corresp_func_dest` FOREIGN KEY (`func_destino_id`) REFERENCES `funcionario` (`id`) ON DELETE SET NULL,
+  CONSTRAINT `fk_corresp_depto_dest` FOREIGN KEY (`depto_destino_id`) REFERENCES `departamento` (`id`) ON DELETE SET NULL
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 -- 11. Tabela: parametros (Configurações Gerais, SMTP e WhatsApp)

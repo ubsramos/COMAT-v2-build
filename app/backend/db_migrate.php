@@ -84,7 +84,23 @@ try {
         ['parametros', 'wa_api_url', 'ALTER TABLE `parametros` ADD COLUMN `wa_api_url` VARCHAR(512) NULL'],
         ['parametros', 'wa_token', 'ALTER TABLE `parametros` ADD COLUMN `wa_token` VARCHAR(255) NULL'],
         ['parametros', 'wa_headers', 'ALTER TABLE `parametros` ADD COLUMN `wa_headers` TEXT NULL'],
-        ['parametros', 'wa_payload', 'ALTER TABLE `parametros` ADD COLUMN `wa_payload` TEXT NULL']
+        ['parametros', 'wa_payload', 'ALTER TABLE `parametros` ADD COLUMN `wa_payload` TEXT NULL'],
+
+        // Tabela: correspondencia
+        ['correspondencia', 'data_chegada', 'ALTER TABLE `correspondencia` ADD COLUMN `data_chegada` DATETIME NULL DEFAULT CURRENT_TIMESTAMP AFTER `id`'],
+        ['correspondencia', 'tipo', 'ALTER TABLE `correspondencia` ADD COLUMN `tipo` VARCHAR(100) NULL AFTER `data_chegada`'],
+        ['correspondencia', 'rastreio', 'ALTER TABLE `correspondencia` ADD COLUMN `rastreio` VARCHAR(100) NULL AFTER `remetente`'],
+        ['correspondencia', 'descricao', 'ALTER TABLE `correspondencia` ADD COLUMN `descricao` TEXT NULL AFTER `rastreio`'],
+        ['correspondencia', 'func_destino_id', 'ALTER TABLE `correspondencia` ADD COLUMN `func_destino_id` INT NULL AFTER `descricao`'],
+        ['correspondencia', 'depto_destino_id', 'ALTER TABLE `correspondencia` ADD COLUMN `depto_destino_id` INT NULL AFTER `func_destino_id`'],
+        ['correspondencia', 'email_destino', 'ALTER TABLE `correspondencia` ADD COLUMN `email_destino` VARCHAR(255) NULL AFTER `depto_destino_id`'],
+        ['correspondencia', 'recebedor_tipo', 'ALTER TABLE `correspondencia` ADD COLUMN `recebedor_tipo` VARCHAR(50) NULL DEFAULT \'almoxarifado\' AFTER `email_destino`'],
+        ['correspondencia', 'recebedor_id', 'ALTER TABLE `correspondencia` ADD COLUMN `recebedor_id` INT NULL AFTER `recebedor_tipo`'],
+        ['correspondencia', 'email_enviado', 'ALTER TABLE `correspondencia` ADD COLUMN `email_enviado` TINYINT(1) NOT NULL DEFAULT 0 AFTER `status`'],
+        ['correspondencia', 'email_erro', 'ALTER TABLE `correspondencia` ADD COLUMN `email_erro` TEXT NULL AFTER `email_enviado`'],
+        ['correspondencia', 'obs_retirada', 'ALTER TABLE `correspondencia` ADD COLUMN `obs_retirada` TEXT NULL AFTER `data_retirada`'],
+        ['correspondencia', 'func_retirada_id', 'ALTER TABLE `correspondencia` ADD COLUMN `func_retirada_id` INT NULL AFTER `obs_retirada`'],
+        ['correspondencia', 'retirado_por_manual', 'ALTER TABLE `correspondencia` ADD COLUMN `retirado_por_manual` VARCHAR(255) NULL AFTER `func_retirada_id`']
     ];
 
     $executed = 0;
@@ -113,6 +129,8 @@ try {
     WHERE id = 1;");
 
     $db->exec("UPDATE `requisicao` SET `data_pedido` = COALESCE(`data_pedido`, `data_solicitacao`, NOW()) WHERE `data_pedido` IS NULL;");
+    $db->exec("UPDATE `correspondencia` SET `data_chegada` = COALESCE(`data_chegada`, `data_recebimento`, NOW()) WHERE `data_chegada` IS NULL;");
+    $db->exec("UPDATE `correspondencia` SET `func_destino_id` = COALESCE(`func_destino_id`, `destinatario_id`) WHERE `func_destino_id` IS NULL AND `destinatario_id` IS NOT NULL;");
 
     if ($executed === 0) {
         echo "[OK] Todas as tabelas e colunas estao 100% atualizadas.\n";
