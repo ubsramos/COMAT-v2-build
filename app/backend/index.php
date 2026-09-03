@@ -220,11 +220,9 @@ foreach ($routes as $route) {
                     echo json_encode($response, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE);
                 }
                 
-            } catch (Exception $e) {
-                $code = $e->getCode();
-                if ($code < 400 || $code > 599) {
-                    $code = 500;
-                }
+            } catch (Throwable $e) {
+                $rawCode = $e->getCode();
+                $code = (is_numeric($rawCode) && (int)$rawCode >= 400 && (int)$rawCode <= 599) ? (int)$rawCode : 500;
                 http_response_code($code);
                 echo json_encode(['detail' => $e->getMessage()]);
             }

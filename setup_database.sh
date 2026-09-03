@@ -63,12 +63,32 @@ fi
 # 3. Configuracao de Rede para Docker / Rede Local
 if [ "$PERMITIR_ACESSO_DOCKER" = "sim" ]; then
   echo -e "\n${CYAN}[2/4] Configurando bind-address para acesso do Docker e rede local...${NC}"
-  if [ -f /etc/mysql/mysql.conf.d/mysqld.cnf ]; then
-    sed -i 's/^bind-address\s*=.*/bind-address = 0.0.0.0/' /etc/mysql/mysql.conf.d/mysqld.cnf
-    sed -i 's/^mysqlx-bind-address\s*=.*/mysqlx-bind-address = 0.0.0.0/' /etc/mysql/mysql.conf.d/mysqld.cnf 2>/dev/null || true
-    systemctl restart mysql || true
-    echo -e "${GREEN}[OK] MySQL configurado para aceitar conexoes locais e via Docker.${NC}"
+  mkdir -p /etc/mysql/conf.d /etc/mysql/mysql.conf.d 2>/dev/null || true
+  cat << 'EOF' > /etc/mysql/conf.d/99-comat-bind.cnf
+[mysqld]
+bind-address = 0.0.0.0
+mysqlx-bind-address = 0.0.0.0
+EOF
+  if [ -d /etc/mysql/mysql.conf.d ]; then
+    cp -f /etc/mysql/conf.d/99-comat-bind.cnf /etc/mysql/mysql.conf.d/99-comat-bind.cnf 2>/dev/null || true
   fi
+
+  for cnf in /etc/mysql/mysql.conf.d/mysqld.cnf /etc/mysql/mariadb.conf.d/50-server.cnf /etc/mysql/my.cnf; do
+    if [ -f "$cnf" ]; then
+      sed -i 's/^bind-address\s*=.*/bind-address = 0.0.0.0/' "$cnf" 2>/dev/null || true
+      sed -i 's/^mysqlx-bind-address\s*=.*/mysqlx-bind-address = 0.0.0.0/' "$cnf" 2>/dev/null || true
+    fi
+  done
+  systemctl restart mysql 2>/dev/null || systemctl restart mariadb 2>/dev/null || true
+
+  # Se UFW estiver ativo, libera porta 3306 para subredes Docker e locais
+  if command -v ufw >/dev/null 2>&1 && ufw status | grep -q "active"; then
+    ufw allow from 172.16.0.0/12 to any port 3306 proto tcp 2>/dev/null || true
+    ufw allow from 10.0.0.0/8 to any port 3306 proto tcp 2>/dev/null || true
+    ufw allow from 192.168.0.0/16 to any port 3306 proto tcp 2>/dev/null || true
+    ufw allow from 127.0.0.1 to any port 3306 proto tcp 2>/dev/null || true
+  fi
+  echo -e "${GREEN}[OK] MySQL e Firewall configurados para aceitar conexoes Docker e rede interna.${NC}"
 fi
 
 # 4. Criacao do Banco de Dados, Usuario e Privilegios

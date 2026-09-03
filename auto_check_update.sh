@@ -38,14 +38,32 @@ if [ -n "$REMOTE_HASH" ] && [ "$LOCAL_HASH" != "$REMOTE_HASH" ]; then
     git branch -M main >/dev/null 2>&1 || true
     git branch --set-upstream-to=origin/main main >/dev/null 2>&1 || true
     
+    # Garante que o .env.production exista antes de subir o Docker
+    if [ ! -f "$SCRIPT_DIR/.env.production" ]; then
+        DOCKER_GATEWAY=$(docker network inspect bridge --format='{{range .IPAM.Config}}{{.Gateway}}{{end}}' 2>/dev/null || echo "172.17.0.1")
+        DB_USER="${DB_USER:-comat_user}"
+        DB_PASS="${DB_PASS:-Comat@2026#App}"
+        DB_NAME="${DB_NAME:-comat_db}"
+        cat <<EOF > "$SCRIPT_DIR/.env.production"
+DATABASE_URL=mysql://${DB_USER}:${DB_PASS}@${DOCKER_GATEWAY:-172.17.0.1}:3306/${DB_NAME}
+SECRET_KEY=$(openssl rand -hex 32 2>/dev/null || echo "comat-jwt-secret-key-$(date +%s)")
+ALGORITHM=HS256
+ACCESS_TOKEN_EXPIRE_MINUTES=480
+UPLOAD_DIR=/var/www/html/backend/uploads
+APP_NAME=COMAT
+APP_VERSION=2.1
+APP_DOCKER_PORT=8033
+EOF
+    fi
+    
     # Recarrega o container Docker
     if docker compose version >/dev/null 2>&1; then
         docker compose up -d --build --remove-orphans
-        docker compose exec -T app php /var/www/html/api/db_migrate.php >/dev/null 2>&1 || true
     else
         docker-compose up -d --build --remove-orphans
-        docker-compose exec -T app php /var/www/html/api/db_migrate.php >/dev/null 2>&1 || true
     fi
+    docker exec comat_v2_app php /var/www/html/backend/api/db_migrate.php >/dev/null 2>&1 || \
+    docker compose exec -T comat_app php /var/www/html/backend/api/db_migrate.php >/dev/null 2>&1 || true
     
     REAL_USER="${SUDO_USER:-$USER}"
     if [ "$REAL_USER" != "root" ]; then

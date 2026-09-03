@@ -85,11 +85,23 @@ fi
 systemctl enable --now mysql 2>/dev/null || systemctl enable --now mariadb 2>/dev/null || true
 
 echo -e "${YELLOW}Configurando bind-address do MySQL para conexoes locais e Docker...${NC}"
-if [ -f /etc/mysql/mysql.conf.d/mysqld.cnf ]; then
-  sed -i 's/^bind-address\s*=.*/bind-address = 0.0.0.0/' /etc/mysql/mysql.conf.d/mysqld.cnf
-  sed -i 's/^mysqlx-bind-address\s*=.*/mysqlx-bind-address = 0.0.0.0/' /etc/mysql/mysql.conf.d/mysqld.cnf 2>/dev/null || true
-  systemctl restart mysql || true
+mkdir -p /etc/mysql/conf.d /etc/mysql/mysql.conf.d 2>/dev/null || true
+cat << 'EOF' > /etc/mysql/conf.d/99-comat-bind.cnf
+[mysqld]
+bind-address = 0.0.0.0
+mysqlx-bind-address = 0.0.0.0
+EOF
+if [ -d /etc/mysql/mysql.conf.d ]; then
+  cp -f /etc/mysql/conf.d/99-comat-bind.cnf /etc/mysql/mysql.conf.d/99-comat-bind.cnf 2>/dev/null || true
 fi
+
+for cnf in /etc/mysql/mysql.conf.d/mysqld.cnf /etc/mysql/mariadb.conf.d/50-server.cnf /etc/mysql/my.cnf; do
+  if [ -f "$cnf" ]; then
+    sed -i 's/^bind-address\s*=.*/bind-address = 0.0.0.0/' "$cnf" 2>/dev/null || true
+    sed -i 's/^mysqlx-bind-address\s*=.*/mysqlx-bind-address = 0.0.0.0/' "$cnf" 2>/dev/null || true
+  fi
+done
+systemctl restart mysql 2>/dev/null || systemctl restart mariadb 2>/dev/null || true
 
 SQL_SETUP="ALTER USER 'root'@'localhost' IDENTIFIED BY '${MYSQL_ROOT_PASS}';
 CREATE DATABASE IF NOT EXISTS \`${DB_NAME}\` CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
@@ -182,16 +194,11 @@ echo -e "${GREEN}[OK] Codigo sincronizado com a versao mais recente do GitHub.${
 # 6. Configuracao do Ambiente de Producao
 echo -e "\n${CYAN}[6/8] Configurando .env.production e Subindo Container Docker...${NC}"
 
-DOCKER_GATEWAY=$(docker network inspect bridge --format='{{range .IPAM.Config}}{{.Gateway}}{{end}}' 2>/dev/null || echo "172.17.0.1")
-if [ -z "$DOCKER_GATEWAY" ]; then
-  DOCKER_GATEWAY="172.17.0.1"
-fi
-
 cat <<EOF > "$SCRIPT_DIR/.env.production"
 # ==============================================================================
 # CONFIGURACOES GERADAS AUTOMATICAMENTE EM $(date)
 # ==============================================================================
-DATABASE_URL=mysql://${DB_USER}:${DB_PASS}@${DOCKER_GATEWAY}:3306/${DB_NAME}
+DATABASE_URL=mysql://${DB_USER}:${DB_PASS}@host.docker.internal:3306/${DB_NAME}
 SECRET_KEY=$(openssl rand -hex 32 2>/dev/null || echo "comat-jwt-secret-key-$(date +%s)")
 ALGORITHM=HS256
 ACCESS_TOKEN_EXPIRE_MINUTES=480
@@ -223,7 +230,8 @@ $COMPOSE_CMD -f "$SCRIPT_DIR/docker-compose.yml" up -d --build
 
 # Executa migrações automáticas de integridade de tabelas
 echo -e "${YELLOW}Validando estrutura de tabelas e colunas no MySQL...${NC}"
-$COMPOSE_CMD -f "$SCRIPT_DIR/docker-compose.yml" exec -T app php /var/www/html/api/db_migrate.php 2>/dev/null || true
+$COMPOSE_CMD -f "$SCRIPT_DIR/docker-compose.yml" exec -T comat_app php /var/www/html/backend/api/db_migrate.php 2>/dev/null || \
+docker exec comat_v2_app php /var/www/html/backend/api/db_migrate.php 2>/dev/null || true
 
 # Criacao do Servico Systemd Dedicado para Garantir Auto-Inicializacao do COMAT no Boot
 echo -e "${YELLOW}Criando servico Systemd para auto-inicializacao do COMAT no boot...${NC}"
@@ -379,8 +387,13 @@ echo -e "${GREEN}[OK] Nginx Gateway configurado e ativo.${NC}"
 ufw allow 22/tcp 2>/dev/null || true
 ufw allow 80/tcp 2>/dev/null || true
 ufw allow 443/tcp 2>/dev/null || true
+# Liberar porta do MySQL (3306) para os containers Docker e subredes locais
+ufw allow from 172.16.0.0/12 to any port 3306 proto tcp 2>/dev/null || true
+ufw allow from 10.0.0.0/8 to any port 3306 proto tcp 2>/dev/null || true
+ufw allow from 192.168.0.0/16 to any port 3306 proto tcp 2>/dev/null || true
+ufw allow from 127.0.0.1 to any port 3306 proto tcp 2>/dev/null || true
 ufw --force enable 2>/dev/null || true
-echo -e "${GREEN}[OK] Firewall configurado (Portas 22, 80 e 443 liberadas).${NC}"
+echo -e "${GREEN}[OK] Firewall configurado (Portas 22, 80, 443 e 3306 interno liberadas).${NC}"
 
 # 8. Configurar Agendamento Automatico no Crontab
 echo -e "\n${CYAN}[8/8] Configurando Agendamento de Atualizacao Automatica (Crontab)...${NC}"

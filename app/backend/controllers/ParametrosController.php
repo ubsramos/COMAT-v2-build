@@ -53,7 +53,8 @@ class ParametrosController {
                                       ldap = ?, ldap_host = ?, ldap_dominio_search = ?, ldap_dominio_email = ?,
                                       email_ativo = ?, smtp_host = ?, smtp_porta = ?, smtp_user = ?, 
                                       smtp_pass = ?, smtp_cripto = ?, email_sistema = ?, wa_ativo = ?, 
-                                      wa_api_url = ?, wa_token = ?, wa_headers = ?, wa_payload = ?
+                                      wa_api_url = ?, wa_token = ?, wa_headers = ?, wa_payload = ?,
+                                      entidade = ?
                 WHERE id = ?";
         
         $stmt = $db->prepare($sql);
@@ -80,6 +81,7 @@ class ParametrosController {
             $d['wa_token'] ?? null,
             $d['wa_headers'] ?? null,
             $d['wa_payload'] ?? null,
+            $d['entidade'] ?? ($d['campo_sigla'] ?? 'ASPA'),
             $id
         ]);
 

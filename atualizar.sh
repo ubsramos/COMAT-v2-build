@@ -37,6 +37,29 @@ git clean -fd 2>/dev/null || true
 git branch -M main 2>/dev/null || true
 git branch --set-upstream-to=origin/main main 2>/dev/null || true
 
+# Garante que o .env.production exista antes de subir o Docker
+if [ ! -f "$SCRIPT_DIR/.env.production" ]; then
+    echo -e "${YELLOW}Criando .env.production com parâmetros padrão...${NC}"
+    DOCKER_GATEWAY=$(docker network inspect bridge --format='{{range .IPAM.Config}}{{.Gateway}}{{end}}' 2>/dev/null || echo "172.17.0.1")
+    DB_USER="${DB_USER:-comat_user}"
+    DB_PASS="${DB_PASS:-Comat@2026#App}"
+    DB_NAME="${DB_NAME:-comat_db}"
+    cat <<EOF > "$SCRIPT_DIR/.env.production"
+# ==============================================================================
+# CONFIGURACOES GERADAS AUTOMATICAMENTE EM $(date)
+# ==============================================================================
+DATABASE_URL=mysql://${DB_USER}:${DB_PASS}@${DOCKER_GATEWAY:-172.17.0.1}:3306/${DB_NAME}
+SECRET_KEY=$(openssl rand -hex 32 2>/dev/null || echo "comat-jwt-secret-key-$(date +%s)")
+ALGORITHM=HS256
+ACCESS_TOKEN_EXPIRE_MINUTES=480
+UPLOAD_DIR=/var/www/html/backend/uploads
+APP_NAME=COMAT
+APP_VERSION=2.1
+APP_DOCKER_PORT=8033
+EOF
+    echo -e "${GREEN}[OK] .env.production gerado.${NC}"
+fi
+
 echo -e "\n${CYAN}[2/3] Recarregando containers Docker...${NC}"
 if docker compose version >/dev/null 2>&1; then
     docker compose up -d --build --remove-orphans
@@ -45,11 +68,8 @@ else
 fi
 
 echo -e "\n${CYAN}[3/3] Verificando e migrando estrutura do banco de dados...${NC}"
-if docker compose version >/dev/null 2>&1; then
-    docker compose exec -T app php /var/www/html/api/db_migrate.php 2>/dev/null || true
-else
-    docker-compose exec -T app php /var/www/html/api/db_migrate.php 2>/dev/null || true
-fi
+docker exec comat_v2_app php /var/www/html/backend/db_migrate.php 2>/dev/null || \
+docker compose exec -T comat_app php /var/www/html/backend/db_migrate.php 2>/dev/null || true
 
 REAL_USER="${SUDO_USER:-$USER}"
 if [ "$REAL_USER" != "root" ]; then

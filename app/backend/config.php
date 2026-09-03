@@ -92,57 +92,72 @@ class Config {
             throw new Exception("DATABASE_URL inválida ou malformada.");
         }
 
-        $dsn = "mysql:host=$host;port=$port;dbname=$name;charset=utf8mb4";
-        
-        try {
-            self::$pdo = new PDO($dsn, $user, $pass, [
-                PDO::ATTR_ERRMODE            => PDO::ERRMODE_EXCEPTION,
-                PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC,
-                PDO::ATTR_EMULATE_PREPARES   => false,
-            ]);
-            return self::$pdo;
-        } catch (PDOException $e) {
-            $errorMsg = $e->getMessage();
-            $ip = null;
-
-            // Tenta extrair o IP da mensagem de erro do MySQL (ex: Host '200.100.50.25' is not allowed...)
-            if (preg_match('/\b\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}\b/', $errorMsg, $matches)) {
-                $ip = $matches[0];
-            }
-
-            // Se não encontrou na mensagem, tenta pegar o IP público externo via API
-            if (!$ip) {
-                $ctx = stream_context_create(['http' => ['timeout' => 1.5]]);
-                $externalIp = @file_get_contents('https://api.ipify.org', false, $ctx);
-                if ($externalIp && filter_var(trim($externalIp), FILTER_VALIDATE_IP)) {
-                    $ip = trim($externalIp);
-                }
-            }
-
-            // Se ainda assim falhar, pega REMOTE_ADDR ou cabeçalhos
-            if (!$ip) {
-                $ip = $_SERVER['REMOTE_ADDR'] ?? '';
-                if (!empty($_SERVER['HTTP_X_FORWARDED_FOR'])) {
-                    $ip = explode(',', $_SERVER['HTTP_X_FORWARDED_FOR'])[0];
-                }
-            }
-
-            // Garante cabeçalhos globais e CORS se não enviados
-            if (!headers_sent()) {
-                header("Access-Control-Allow-Origin: *");
-                header("Access-Control-Allow-Methods: GET, POST, PUT, DELETE, OPTIONS, PATCH");
-                header("Access-Control-Allow-Headers: Authorization, Content-Type, Accept, Origin, X-Requested-With");
-                header("Content-Type: application/json; charset=utf-8");
-                http_response_code(503);
-            }
-            
-            echo json_encode([
-                'error' => 'ip_blocked',
-                'ip' => $ip,
-                'detail' => $errorMsg
-            ], JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE);
-            exit;
+        $hostsToTry = [$host];
+        // Se host for host.docker.internal, adiciona fallbacks em caso de falha de DNS interno do Docker
+        if ($host === 'host.docker.internal') {
+            $hostsToTry[] = '172.17.0.1';
+            $hostsToTry[] = '172.18.0.1';
+            $hostsToTry[] = '127.0.0.1';
         }
+
+        $lastException = null;
+        foreach ($hostsToTry as $currentHost) {
+            $dsn = "mysql:host=$currentHost;port=$port;dbname=$name;charset=utf8mb4";
+            try {
+                self::$pdo = new PDO($dsn, $user, $pass, [
+                    PDO::ATTR_ERRMODE            => PDO::ERRMODE_EXCEPTION,
+                    PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC,
+                    PDO::ATTR_EMULATE_PREPARES   => false,
+                    PDO::ATTR_TIMEOUT            => 3,
+                ]);
+                return self::$pdo;
+            } catch (PDOException $e) {
+                $lastException = $e;
+            }
+        }
+
+        // Se todos os hosts falharem, trata a exceção
+        $e = $lastException;
+        $errorMsg = $e ? $e->getMessage() : "Não foi possível conectar ao banco de dados MySQL.";
+        $ip = null;
+
+        // Tenta extrair o IP da mensagem de erro do MySQL (ex: Host '200.100.50.25' is not allowed...)
+        if (preg_match('/\b\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}\b/', $errorMsg, $matches)) {
+            $ip = $matches[0];
+        }
+
+        // Se não encontrou na mensagem, tenta pegar o IP público externo via API
+        if (!$ip) {
+            $ctx = stream_context_create(['http' => ['timeout' => 1.5]]);
+            $externalIp = @file_get_contents('https://api.ipify.org', false, $ctx);
+            if ($externalIp && filter_var(trim($externalIp), FILTER_VALIDATE_IP)) {
+                $ip = trim($externalIp);
+            }
+        }
+
+        // Se ainda assim falhar, pega REMOTE_ADDR ou cabeçalhos
+        if (!$ip) {
+            $ip = $_SERVER['REMOTE_ADDR'] ?? '';
+            if (!empty($_SERVER['HTTP_X_FORWARDED_FOR'])) {
+                $ip = explode(',', $_SERVER['HTTP_X_FORWARDED_FOR'])[0];
+            }
+        }
+
+        // Garante cabeçalhos globais e CORS se não enviados
+        if (!headers_sent()) {
+            header("Access-Control-Allow-Origin: *");
+            header("Access-Control-Allow-Methods: GET, POST, PUT, DELETE, OPTIONS, PATCH");
+            header("Access-Control-Allow-Headers: Authorization, Content-Type, Accept, Origin, X-Requested-With");
+            header("Content-Type: application/json; charset=utf-8");
+            http_response_code(503);
+        }
+        
+        echo json_encode([
+            'error' => 'ip_blocked',
+            'ip' => $ip,
+            'detail' => $errorMsg
+        ], JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE);
+        exit;
     }
 }
 

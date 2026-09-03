@@ -100,7 +100,7 @@ rm -f "$SCRIPT_DIR/credenciais_banco.txt"
 rm -rf "$SCRIPT_DIR/app/backend/uploads"/*
 
 cat <<EOF > "$SCRIPT_DIR/.env.production"
-DATABASE_URL=mysql://comat_user:SENHA_AQUI@host.docker.internal:3306/comat_db
+DATABASE_URL=mysql://comat_user:Comat@2026#App@host.docker.internal:3306/comat_db
 SECRET_KEY=comat-v2-production-jwt-security-key-2026
 ALGORITHM=HS256
 ACCESS_TOKEN_EXPIRE_MINUTES=480

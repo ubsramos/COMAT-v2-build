@@ -23,6 +23,10 @@ CREATE TABLE IF NOT EXISTS `usuario` (
 CREATE TABLE IF NOT EXISTS `departamento` (
   `id` INT AUTO_INCREMENT PRIMARY KEY,
   `descricao` VARCHAR(255) NOT NULL,
+  `descricao_completa` TEXT NULL,
+  `conta` VARCHAR(50) NULL,
+  `sub_conta` VARCHAR(50) NULL,
+  `centro_custo` VARCHAR(50) NULL,
   `user_auth` VARCHAR(100) NULL,
   `criado_em` DATETIME DEFAULT CURRENT_TIMESTAMP
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
@@ -51,9 +55,11 @@ CREATE TABLE IF NOT EXISTS `funcionario` (
   `depto_id` INT NULL,
   `status` TINYINT(1) NOT NULL DEFAULT 1,
   `acesso` TEXT NULL,
+  `funcao` INT NOT NULL DEFAULT 1,
   `admin_estoque` TINYINT(1) NOT NULL DEFAULT 0,
   `email` VARCHAR(255) NULL,
   `telefone` VARCHAR(50) NULL,
+  `hash` VARCHAR(64) NULL,
   `criado_em` DATETIME DEFAULT CURRENT_TIMESTAMP,
   CONSTRAINT `fk_func_depto` FOREIGN KEY (`depto_id`) REFERENCES `departamento` (`id`) ON DELETE SET NULL
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
@@ -89,6 +95,11 @@ CREATE TABLE IF NOT EXISTS `produto` (
 CREATE TABLE IF NOT EXISTS `requisicao` (
   `id` INT AUTO_INCREMENT PRIMARY KEY,
   `numero` VARCHAR(50) NULL,
+  `data_pedido` DATETIME DEFAULT CURRENT_TIMESTAMP,
+  `descricao` VARCHAR(255) NULL,
+  `tag` VARCHAR(100) NULL,
+  `numero_nf` VARCHAR(100) NULL,
+  `hash` VARCHAR(64) NULL,
   `depto_destino_id` INT NULL,
   `depto_origem_id` INT NULL,
   `departamento_id` INT NULL,
@@ -153,6 +164,17 @@ CREATE TABLE IF NOT EXISTS `correspondencia` (
 -- 11. Tabela: parametros (Configurações Gerais, SMTP e WhatsApp)
 CREATE TABLE IF NOT EXISTS `parametros` (
   `id` INT AUTO_INCREMENT PRIMARY KEY,
+  `entidade` VARCHAR(255) NULL DEFAULT 'ASPA',
+  `campo_nome` VARCHAR(255) NOT NULL DEFAULT 'Associação Paulista',
+  `campo_sigla` VARCHAR(50) NOT NULL DEFAULT 'ASPA',
+  `campo_cnpj` VARCHAR(50) NULL DEFAULT '',
+  `campo_endereco` VARCHAR(255) NULL DEFAULT '',
+  `sistema_nome` VARCHAR(255) NOT NULL DEFAULT 'COMAT — Controle de Material',
+  `sistema_sigla` VARCHAR(50) NOT NULL DEFAULT 'COMAT',
+  `ldap` TINYINT(1) NOT NULL DEFAULT 0,
+  `ldap_host` VARCHAR(255) NULL,
+  `ldap_dominio_search` VARCHAR(255) NULL,
+  `ldap_dominio_email` VARCHAR(255) NULL,
   `empresa_nome` VARCHAR(255) NOT NULL DEFAULT 'COMAT — Controle de Material',
   `email_ativo` TINYINT(1) NOT NULL DEFAULT 0,
   `smtp_host` VARCHAR(255) NULL,
@@ -169,6 +191,13 @@ CREATE TABLE IF NOT EXISTS `parametros` (
   `criado_em` DATETIME DEFAULT CURRENT_TIMESTAMP
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
+-- 12. Tabela: tag (Tags e Categorizações Rápidas)
+CREATE TABLE IF NOT EXISTS `tag` (
+  `id` INT AUTO_INCREMENT PRIMARY KEY,
+  `descricao` VARCHAR(100) NOT NULL,
+  `criado_em` DATETIME DEFAULT CURRENT_TIMESTAMP
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
 SET FOREIGN_KEY_CHECKS = 1;
 
 -- ==============================================================================
@@ -176,7 +205,6 @@ SET FOREIGN_KEY_CHECKS = 1;
 -- ==============================================================================
 
 -- Usuário Administrador Padrão (Login: admin / Senha: admin123)
--- Nível 1 (Superusuário Master) com todos os módulos liberados
 INSERT INTO `usuario` (`id`, `login`, `senha`, `nivel`, `ativo`, `acesso`) VALUES
 (1, 'admin', '$2y$10$b2eBOXeaSBQlZ6YVPoJUv.vYRJhGrLW2KGngyJ2/LgTPnsQd1HS3y', 1, 1, 'ALL,CM0,CM11,CM12,CM13,CM14,CM15,CM16,CM17,CM21,CM22,CM24,CM25,CM31,CM32,CM40')
 ON DUPLICATE KEY UPDATE `senha` = '$2y$10$b2eBOXeaSBQlZ6YVPoJUv.vYRJhGrLW2KGngyJ2/LgTPnsQd1HS3y', `nivel` = 1, `acesso` = 'ALL,CM0,CM11,CM12,CM13,CM14,CM15,CM16,CM17,CM21,CM22,CM24,CM25,CM31,CM32,CM40', `ativo` = 1;
@@ -213,5 +241,5 @@ INSERT IGNORE INTO `correspondencia_tipo` (`id`, `descricao`, `ativo`) VALUES
 (4, 'SEDEX / TRANSPORTADORA', 1);
 
 -- Parâmetros Iniciais do Sistema
-INSERT IGNORE INTO `parametros` (`id`, `empresa_nome`, `email_ativo`, `wa_ativo`) VALUES
-(1, 'COMAT v2 — Hospital & Gestão de Materiais', 0, 0);
+INSERT IGNORE INTO `parametros` (`id`, `entidade`, `campo_nome`, `campo_sigla`, `sistema_nome`, `sistema_sigla`, `email_ativo`, `wa_ativo`) VALUES
+(1, 'ASPA', 'Associação Paulista', 'ASPA', 'COMAT — Controle de Material', 'COMAT', 0, 0);
