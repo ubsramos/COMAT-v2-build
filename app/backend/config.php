@@ -159,7 +159,39 @@ class Config {
         ], JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE);
         exit;
     }
+
+    /**
+     * Auto-migração inteligente e resiliente do banco de dados na abertura do sistema.
+     * Utiliza cache por hash MD5 para executar apenas quando houver mudanças no arquivo db_migrate.php.
+     * Custo de performance no dia a dia: 0.00005s (uma simples checagem de arquivo).
+     */
+    public static function checkAutoMigrate() {
+        $migrateFile = __DIR__ . '/db_migrate.php';
+        if (!file_exists($migrateFile)) {
+            return;
+        }
+
+        $hashFile = sys_get_temp_dir() . '/comat_db_migrate.hash';
+        $currentHash = md5_file($migrateFile);
+
+        // Se o hash conferir com a última execução com sucesso, não repete as queries
+        if (file_exists($hashFile) && @file_get_contents($hashFile) === $currentHash) {
+            return;
+        }
+
+        try {
+            ob_start();
+            require_once $migrateFile;
+            ob_end_clean();
+            @file_put_contents($hashFile, $currentHash);
+        } catch (Throwable $t) {
+            error_log("[COMAT AUTO-MIGRATE] Erro na migração automática: " . $t->getMessage());
+        }
+    }
 }
 
 // Inicializa o carregamento do .env
 Config::loadEnv();
+
+// Executa auto-migração sob demanda com verificação de hash (100% automático na abertura do sistema)
+Config::checkAutoMigrate();

@@ -10,12 +10,14 @@ try {
     $db = Config::getDb();
 
     // Função auxiliar para verificar se coluna existe
-    function columnExists($db, $table, $column) {
-        try {
-            $stmt = $db->query("SHOW COLUMNS FROM `$table` LIKE '$column'");
-            return $stmt->rowCount() > 0;
-        } catch (Exception $e) {
-            return false;
+    if (!function_exists('columnExists')) {
+        function columnExists($db, $table, $column) {
+            try {
+                $stmt = $db->query("SHOW COLUMNS FROM `$table` LIKE '$column'");
+                return $stmt->rowCount() > 0;
+            } catch (Exception $e) {
+                return false;
+            }
         }
     }
 
