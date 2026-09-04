@@ -122,17 +122,43 @@ try {
       `criado_em` DATETIME DEFAULT CURRENT_TIMESTAMP
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;");
 
-    // Sincronizar dados iniciais
-    $db->exec("UPDATE `parametros` SET 
-      `campo_nome` = COALESCE(`campo_nome`, `empresa_nome`, 'Associação Paulista'),
-      `campo_sigla` = COALESCE(`campo_sigla`, 'ASPA'),
-      `sistema_nome` = COALESCE(`sistema_nome`, 'COMAT — Controle de Material'),
-      `sistema_sigla` = COALESCE(`sistema_sigla`, 'COMAT')
-    WHERE id = 1;");
+    // Criar tabela de log de backups de estoque caso nao exista
+    $db->exec("CREATE TABLE IF NOT EXISTS `estoque_backup_log` (
+      `id` INT AUTO_INCREMENT PRIMARY KEY,
+      `nome_tabela` VARCHAR(100) NOT NULL UNIQUE,
+      `total_produtos` INT NOT NULL DEFAULT 0,
+      `qtde_total_estoque` DECIMAL(12,2) NOT NULL DEFAULT 0.00,
+      `valor_total_estoque` DECIMAL(12,2) NOT NULL DEFAULT 0.00,
+      `usuario_nome` VARCHAR(255) NULL,
+      `criado_em` DATETIME DEFAULT CURRENT_TIMESTAMP
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;");
 
-    $db->exec("UPDATE `requisicao` SET `data_pedido` = COALESCE(`data_pedido`, `data_solicitacao`, NOW()) WHERE `data_pedido` IS NULL;");
-    $db->exec("UPDATE `correspondencia` SET `data_chegada` = COALESCE(`data_chegada`, `data_recebimento`, NOW()) WHERE `data_chegada` IS NULL;");
-    $db->exec("UPDATE `correspondencia` SET `func_destino_id` = COALESCE(`func_destino_id`, `destinatario_id`) WHERE `func_destino_id` IS NULL AND `destinatario_id` IS NOT NULL;");
+    // Sincronizar dados iniciais de forma resiliente
+    try {
+        if (columnExists($db, 'parametros', 'empresa_nome')) {
+            $db->exec("UPDATE `parametros` SET `campo_nome` = COALESCE(`campo_nome`, `empresa_nome`) WHERE `campo_nome` IS NULL OR `campo_nome` = '';");
+        }
+        $db->exec("UPDATE `parametros` SET 
+          `campo_sigla` = COALESCE(`campo_sigla`, 'ASPA'),
+          `sistema_nome` = COALESCE(`sistema_nome`, 'COMAT — Controle de Material'),
+          `sistema_sigla` = COALESCE(`sistema_sigla`, 'COMAT')
+        WHERE `id` > 0;");
+    } catch (Exception $e) {}
+
+    try {
+        if (columnExists($db, 'requisicao', 'data_solicitacao')) {
+            $db->exec("UPDATE `requisicao` SET `data_pedido` = COALESCE(`data_pedido`, `data_solicitacao`) WHERE `data_pedido` IS NULL;");
+        }
+    } catch (Exception $e) {}
+
+    try {
+        if (columnExists($db, 'correspondencia', 'data_recebimento')) {
+            $db->exec("UPDATE `correspondencia` SET `data_chegada` = COALESCE(`data_chegada`, `data_recebimento`) WHERE `data_chegada` IS NULL;");
+        }
+        if (columnExists($db, 'correspondencia', 'destinatario_id')) {
+            $db->exec("UPDATE `correspondencia` SET `func_destino_id` = COALESCE(`func_destino_id`, `destinatario_id`) WHERE `func_destino_id` IS NULL AND `destinatario_id` IS NOT NULL;");
+        }
+    } catch (Exception $e) {}
 
     if ($executed === 0) {
         echo "[OK] Todas as tabelas e colunas estao 100% atualizadas.\n";

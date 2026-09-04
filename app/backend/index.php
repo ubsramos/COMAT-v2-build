@@ -126,6 +126,20 @@ $routes = [
     // Relatórios
     ['GET',    '/relatorios/movimentacao',            'RelatoriosController@movimentacao'],
     ['GET',    '/relatorios/situacao-estoque',        'RelatoriosController@situacaoEstoque'],
+
+    // Estoque & Backup Dinâmico
+    ['GET',    '/estoque/backups',                    'EstoqueBackupController@listarBackups'],
+    ['GET',    '/estoque/backups/{tabela}',           'EstoqueBackupController@obterDadosBackup'],
+    ['POST',   '/estoque/preview-planilha',           'EstoqueBackupController@previewPlanilha'],
+    ['POST',   '/estoque/reset-e-importar',           'EstoqueBackupController@executarResetEImportacao'],
+    ['POST',   '/estoque/restaurar-backup',           'EstoqueBackupController@restaurarBackup'],
+
+    // Backup & Restore do Banco de Dados Completo
+    ['GET',    '/database/backups',                     'DatabaseBackupController@listar'],
+    ['POST',   '/database/backups',                     'DatabaseBackupController@criar'],
+    ['GET',    '/database/backups/download/{filename}', 'DatabaseBackupController@download'],
+    ['POST',   '/database/backups/restore',             'DatabaseBackupController@restaurar'],
+    ['DELETE', '/database/backups/{filename}',          'DatabaseBackupController@excluir'],
 ];
 
 // ─── Processamento do Request URI e Roteamento ───────────────────────────────
