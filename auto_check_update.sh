@@ -19,8 +19,11 @@ fi
 git remote remove origin >/dev/null 2>&1 || true
 git remote add origin "$BUILD_REPO" >/dev/null 2>&1 || true
 
-# Executa fetch do GitHub
-git fetch origin main >/dev/null 2>&1 || exit 0
+# Executa fetch do GitHub com auto-recuperacao contra refs corrompidas
+if ! git fetch origin main >/dev/null 2>&1; then
+    rm -f .git/refs/remotes/origin/main 2>/dev/null || true
+    git fetch origin main >/dev/null 2>&1 || exit 0
+fi
 
 LOCAL_HASH=$(git rev-parse HEAD 2>/dev/null || echo "SEM_VERSAO_LOCAL")
 REMOTE_HASH=$(git rev-parse origin/main 2>/dev/null || echo "")
@@ -62,8 +65,8 @@ EOF
     else
         docker-compose up -d --build --remove-orphans
     fi
-    docker exec comat_v2_app php /var/www/html/backend/api/db_migrate.php >/dev/null 2>&1 || \
-    docker compose exec -T comat_app php /var/www/html/backend/api/db_migrate.php >/dev/null 2>&1 || true
+    docker exec comat_v2_app php /var/www/html/backend/db_migrate.php >/dev/null 2>&1 || \
+    docker compose exec -T comat_app php /var/www/html/backend/db_migrate.php >/dev/null 2>&1 || true
     
     REAL_USER="${SUDO_USER:-$USER}"
     if [ "$REAL_USER" != "root" ]; then
