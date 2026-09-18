@@ -9,9 +9,12 @@ set -e
 # 1. PAINEL DE CONFIGURACOES (Ajuste aqui conforme o servidor)
 # ==============================================================================
 
-# Diretorio base onde o COMAT esta instalado no servidor
-# (Se vazio, tenta auto-detectar o diretorio atual do script)
+# Diretorio base onde o COMAT esta instalado no servidor:
+# [PRODUÇÃO - DTI] Caminho oficial de produção (Ativo por padrão):
 TARGET_DIR="${1:-/home/dti/DOCKER-DISTRIB}"
+
+# [LOCAL - ULI] Caminho do servidor local 192.168.15.100 (Comentado):
+# TARGET_DIR="${1:-/home/uli/DOCKER-DISTRIB}"
 
 # Nome do container Docker exclusivo do COMAT
 CONTAINER_NAME="comat_v2_app"
