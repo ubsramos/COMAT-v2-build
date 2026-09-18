@@ -1,10 +1,38 @@
 #!/bin/bash
 # ==============================================================================
-# SCRIPT DE RESTAURACAO E ATUALIZACAO CIRURGICA — COMAT v2 (PRODUCAO)
-# Seguro para servidores compartilhados com múltiplos contêineres Docker
+# SCRIPT UNIVERSAL DE RESTAURACAO E ATUALIZACAO CIRURGICA — COMAT v2
+# Parametrizado, seguro para servidores compartilhados com multiplos containers
 # ==============================================================================
 set -e
 
+# ==============================================================================
+# 1. PAINEL DE CONFIGURACOES (Ajuste aqui conforme o servidor)
+# ==============================================================================
+
+# Diretorio base onde o COMAT esta instalado no servidor
+# (Se vazio, tenta auto-detectar o diretorio atual do script)
+TARGET_DIR="${1:-/home/dti/DOCKER-DISTRIB}"
+
+# Nome do container Docker exclusivo do COMAT
+CONTAINER_NAME="comat_v2_app"
+
+# Porta interna que o container escuta (definida no .env.production / docker-compose)
+DEFAULT_PORT="8033"
+
+# Usuario do Linux dono dos arquivos da aplicacao (ex: dti, uli, ubuntu)
+# Deixe vazio ("") para auto-detectar via $SUDO_USER ou dono da pasta
+SYSTEM_USER=""
+
+# Branch remota do GitHub
+GIT_BRANCH="main"
+
+# Salvar e proteger automaticamente o .env.production local? ("sim" ou "nao")
+BACKUP_ENV_LOCAL="sim"
+
+
+# ==============================================================================
+# 2. CORES E FORMATACAO VISUAL
+# ==============================================================================
 GREEN='\033[0;32m'
 BLUE='\033[0;34m'
 YELLOW='\033[1;33m'
@@ -15,81 +43,117 @@ NC='\033[0m'
 
 echo -e "${BLUE}${BOLD}"
 echo "=============================================================================="
-echo "      INICIANDO RESTAURACAO E ATUALIZACAO SEGURA — COMAT v2 (PRODUCAO)        "
+echo "          RESTAURACAO E ATUALIZACAO AUTOMATIZADA — COMAT v2                   "
 echo "=============================================================================="
 echo -e "${NC}"
 
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-cd "$SCRIPT_DIR"
+# ==============================================================================
+# 3. VALIDACOES INICIAIS E AUTO-DETECCAO
+# ==============================================================================
 
-# 1. Configura Git para evitar bloqueios de safe.directory
+# Se o caminho passado nao existir, tenta o diretorio de onde o script foi chamado
+if [ ! -d "$TARGET_DIR" ]; then
+    SCRIPT_LOCATION="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+    if [ -f "$SCRIPT_LOCATION/docker-compose.yml" ]; then
+        TARGET_DIR="$SCRIPT_LOCATION"
+    else
+        echo -e "${RED}[ERRO] Diretorio '$TARGET_DIR' nao encontrado!${NC}"
+        echo -e "Uso: sudo bash $0 [caminho_da_pasta]"
+        echo -e "Exemplo: sudo bash $0 /home/dti/DOCKER-DISTRIB"
+        exit 1
+    fi
+fi
+
+cd "$TARGET_DIR"
+echo -e "Diretório de Operação: ${CYAN}${BOLD}$TARGET_DIR${NC}"
+
+# Auto-detectar usuario do sistema caso nao configurado
+if [ -z "$SYSTEM_USER" ]; then
+    if [ -n "$SUDO_USER" ] && [ "$SUDO_USER" != "root" ]; then
+        SYSTEM_USER="$SUDO_USER"
+    else
+        SYSTEM_USER=$(stat -c '%U' "$TARGET_DIR" 2>/dev/null || stat -f '%Su' "$TARGET_DIR" 2>/dev/null || echo "dti")
+    fi
+fi
+echo -e "Usuário Proprietário:  ${CYAN}${BOLD}$SYSTEM_USER${NC}"
+echo -e "Container Destino:     ${CYAN}${BOLD}$CONTAINER_NAME${NC}\n"
+
+# Garante permissao do Git mesmo quando executado como root/sudo
 git config --global --add safe.directory "*" 2>/dev/null || true
 
-# 2. Backup de seguranca do .env.production local (para nao perder credenciais da VM)
-if [ -f ".env.production" ]; then
-    echo -e "${CYAN}[1/5] Fazendo backup temporário das configurações locais (.env.production)...${NC}"
-    cp .env.production /tmp/comat_env_backup_$$
-    HAS_ENV_BACKUP=true
+# ==============================================================================
+# 4. PASSO A PASSO DA RESTAURACAO
+# ==============================================================================
+
+# [1/5] Backup das configuracoes locais de banco (.env.production)
+ENV_BACKUP_TEMP="/tmp/comat_env_backup_$$.env"
+if [ "$BACKUP_ENV_LOCAL" == "sim" ] && [ -f ".env.production" ]; then
+    echo -e "${CYAN}[1/5] Protegendo credenciais locais (.env.production)...${NC}"
+    cp .env.production "$ENV_BACKUP_TEMP"
+    echo -e "${GREEN}[OK] Backup temporário salvo com sucesso.${NC}"
 else
-    HAS_ENV_BACKUP=false
+    echo -e "${YELLOW}[1/5] Nenhum .env.production anterior encontrado. Será utilizado o padrão do repositório.${NC}"
 fi
 
-# 3. Forcar Git a ignorar travas e conflitos locais
-echo -e "\n${CYAN}[2/5] Sincronizando com origin/main (destravando conflitos e limpando sujeira)...${NC}"
-rm -f .git/refs/remotes/origin/main 2>/dev/null || true
-git fetch origin main
+# [2/5] Limpeza de travas do Git e sincronizacao forcada
+echo -e "\n${CYAN}[2/5] Destravando Git e sincronizando com origin/${GIT_BRANCH}...${NC}"
+# Remove referencias corrompidas de fetch anterior
+rm -f .git/refs/remotes/origin/${GIT_BRANCH} 2>/dev/null || true
 
-# Remove arquivos nao rastreados que estao bloqueando o Git (ex: app/backend/index.php)
+git fetch origin "$GIT_BRANCH"
+
+# Remove sujeiras untracked (ex: index.php, logs locais) que bloqueariam o merge
 git clean -fd 2>/dev/null || true
 
-# Forca a arvore de arquivos a ficar identica a versao mais recente do GitHub
-git reset --hard origin/main
+# Forca o estado da pasta a ficar rigorosamente identico ao GitHub
+git reset --hard "origin/$GIT_BRANCH"
 git clean -fd
 
-# 4. Restaura o .env.production com as credenciais da VM
-if [ "$HAS_ENV_BACKUP" = true ] && [ -f "/tmp/comat_env_backup_$$" ]; then
-    echo -e "${GREEN}[OK] Restaurando configurações locais do banco e ambiente (.env.production)...${NC}"
-    cp /tmp/comat_env_backup_$$ .env.production
-    rm -f /tmp/comat_env_backup_$$
+# Restaura o .env.production do servidor para nao perder senhas de banco da rede local
+if [ -f "$ENV_BACKUP_TEMP" ]; then
+    echo -e "${GREEN}[OK] Restaurando credenciais originais (.env.production)...${NC}"
+    cp "$ENV_BACKUP_TEMP" .env.production
+    rm -f "$ENV_BACKUP_TEMP"
 fi
 
-# 5. Forcar Rebuild e Recriacao CIRURGICA do container COMAT
-echo -e "\n${CYAN}[3/5] Recarregando container com rebuild forçado (--build --force-recreate)...${NC}"
+# [3/5] Rebuild e recriacao cirurgica do container Docker
+echo -e "\n${CYAN}[3/5] Recriando container Docker de forma isolada (--build --force-recreate)...${NC}"
 if docker compose version >/dev/null 2>&1; then
     docker compose up -d --build --force-recreate --remove-orphans
 else
     docker-compose up -d --build --force-recreate --remove-orphans
 fi
 
-# 6. Executar migracao do banco de dados
-echo -e "\n${CYAN}[4/5] Executando migração da estrutura do banco de dados...${NC}"
-sleep 3
-docker exec comat_v2_app php /var/www/html/backend/db_migrate.php || \
+# [4/5] Execucao de migracoes de banco de dados
+echo -e "\n${CYAN}[4/5] Executando migrações no banco de dados comat_db...${NC}"
+sleep 2
+docker exec "$CONTAINER_NAME" php /var/www/html/backend/db_migrate.php || \
 docker compose exec -T comat_app php /var/www/html/backend/db_migrate.php || true
 
-# 7. Ajustar permissoes para o usuario que chamou o script
-REAL_USER="${SUDO_USER:-$USER}"
-if [ "$REAL_USER" != "root" ]; then
-    chown -R "$REAL_USER:$REAL_USER" "$SCRIPT_DIR" 2>/dev/null || true
+# Devolve permissoes de arquivos para o usuario regular
+if [ -n "$SYSTEM_USER" ] && [ "$SYSTEM_USER" != "root" ]; then
+    chown -R "$SYSTEM_USER:$SYSTEM_USER" "$TARGET_DIR" 2>/dev/null || true
 fi
 
-# 8. Verificacao e exibicao da versao ativa
-echo -e "\n${CYAN}[5/5] Validando versão ativa em produção...${NC}"
+# [5/5] Validacao da versao ativa
+echo -e "\n${CYAN}[5/5] Validando integridade e versão da aplicação...${NC}"
 sleep 2
-CONTAINER_PORT=$(grep -E '^APP_DOCKER_PORT=' .env.production 2>/dev/null | cut -d'=' -f2 | tr -d ' ' || echo "8033")
-CONTAINER_PORT="${CONTAINER_PORT:-8033}"
 
-JS_FILE=$(curl -s "http://127.0.0.1:${CONTAINER_PORT}/" 2>/dev/null | grep -o 'assets/index-[^"]*\.js' | head -n 1 || echo "")
-VERSION_INFO=""
+PORT=$(grep -E '^APP_DOCKER_PORT=' .env.production 2>/dev/null | cut -d'=' -f2 | tr -d ' ' || echo "$DEFAULT_PORT")
+PORT="${PORT:-$DEFAULT_PORT}"
+
+JS_FILE=$(curl -s "http://127.0.0.1:${PORT}/" 2>/dev/null | grep -o 'assets/index-[^"]*\.js' | head -n 1 || echo "")
+VERSION_INFO="N/A"
+
 if [ -n "$JS_FILE" ]; then
-    VERSION_INFO=$(curl -s "http://127.0.0.1:${CONTAINER_PORT}/${JS_FILE}" 2>/dev/null | grep -o '[0-9]\{8\}|[0-9]\{2\}h[0-9]\{2\}-v[0-9]\.[0-9]\.[0-9]\.[0-9]\+' | head -n 1 || echo "")
+    VERSION_INFO=$(curl -s "http://127.0.0.1:${PORT}/${JS_FILE}" 2>/dev/null | grep -o '[0-9]\{8\}|[0-9]\{2\}h[0-9]\{2\}-v[0-9]\.[0-9]\.[0-9]\+' | head -n 1 || echo "v2.1")
 fi
 
 echo -e "\n${GREEN}${BOLD}==============================================================================${NC}"
-echo -e "${GREEN}${BOLD}      COMAT v2 RESTAURADO E ATUALIZADO COM SUCESSO!                          ${NC}"
-if [ -n "$VERSION_INFO" ]; then
-    echo -e "${GREEN}${BOLD}      Versão Ativa: ${VERSION_INFO}                                          ${NC}"
-fi
+echo -e "${GREEN}${BOLD}             COMAT v2 RESTAURADO E OPERACIONAL EM PRODUCAO!                   ${NC}"
 echo -e "${GREEN}${BOLD}==============================================================================${NC}"
-docker ps --filter name=comat_v2_app --format "table {{.Names}}\t{{.Status}}\t{{.Ports}}"
-echo ""
+echo -e "Status do Contêiner:"
+docker ps --filter "name=${CONTAINER_NAME}" --format "table {{.Names}}\t{{.Status}}\t{{.Ports}}"
+echo -e "Versão e Carimbo Ativos: ${CYAN}${BOLD}${VERSION_INFO}${NC}"
+echo -e "Porta Interna em Escuta: ${CYAN}${BOLD}${PORT}${NC}"
+echo -e "==============================================================================\n"
