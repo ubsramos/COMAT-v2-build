@@ -31,7 +31,11 @@ git remote remove origin 2>/dev/null || true
 git remote add origin "$BUILD_REPO"
 
 echo -e "\n${CYAN}[1/3] Baixando versao compilada mais recente do GitHub...${NC}"
-git fetch origin main
+if ! git fetch origin main; then
+    echo -e "${YELLOW}Tentando recuperar referencias locais do Git...${NC}"
+    rm -f .git/refs/remotes/origin/main 2>/dev/null || true
+    git fetch origin main
+fi
 git reset --hard origin/main
 git clean -fd 2>/dev/null || true
 git branch -M main 2>/dev/null || true
@@ -60,11 +64,11 @@ EOF
     echo -e "${GREEN}[OK] .env.production gerado.${NC}"
 fi
 
-echo -e "\n${CYAN}[2/3] Recarregando containers Docker...${NC}"
+echo -e "\n${CYAN}[2/3] Recarregando containers Docker (Forçando Rebuild e Recreate)...${NC}"
 if docker compose version >/dev/null 2>&1; then
-    docker compose up -d --build --remove-orphans
+    docker compose up -d --build --force-recreate --remove-orphans
 else
-    docker-compose up -d --build --remove-orphans
+    docker-compose up -d --build --force-recreate --remove-orphans
 fi
 
 echo -e "\n${CYAN}[3/3] Verificando e migrando estrutura do banco de dados...${NC}"
