@@ -55,9 +55,22 @@ class Config {
     }
 
     /**
-     * Retorna a conexão PDO MySQL ativa (Singleton)
+     * Retorna a conexão PDO MySQL ativa (Singleton) com Auto-Migração automática
      */
     public static function getDb() {
+        if (self::$pdo !== null) {
+            return self::$pdo;
+        }
+
+        self::$pdo = self::getRawDbConnection();
+        self::autoMigrateIfNeeded(self::$pdo);
+        return self::$pdo;
+    }
+
+    /**
+     * Conexão direta PDO sem acionamento de auto-migração (evita recursão)
+     */
+    public static function getRawDbConnection() {
         if (self::$pdo !== null) {
             return self::$pdo;
         }
@@ -157,22 +170,21 @@ class Config {
             'ip' => $ip,
             'detail' => $errorMsg
         ], JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE);
-        exit;
     }
 
     /**
      * Auto-migração inteligente e resiliente do banco de dados na abertura do sistema.
-     * Utiliza cache por hash MD5 para executar apenas quando houver mudanças no arquivo db_migrate.php.
-     * Custo de performance no dia a dia: 0.00005s (uma simples checagem de arquivo).
+     * Utiliza cache por hash MD5 do arquivo db_migrate.php para executar apenas quando houver mudanças.
+     * Custo de performance no dia a dia: 0.00005s (uma simples checagem de hash em /tmp).
      */
-    public static function checkAutoMigrate() {
+    public static function checkAutoMigrate($pdo = null) {
         $migrateFile = __DIR__ . '/db_migrate.php';
         if (!file_exists($migrateFile)) {
             return;
         }
 
-        $hashFile = sys_get_temp_dir() . '/comat_db_migrate.hash';
-        $currentHash = md5_file($migrateFile);
+        $hashFile = sys_get_temp_dir() . '/comat_db_migrate_v2_1.hash';
+        $currentHash = @md5_file($migrateFile) ?: 'v2.1';
 
         // Se o hash conferir com a última execução com sucesso, não repete as queries
         if (file_exists($hashFile) && @file_get_contents($hashFile) === $currentHash) {
@@ -180,18 +192,21 @@ class Config {
         }
 
         try {
-            ob_start();
             require_once $migrateFile;
-            ob_end_clean();
+            if (class_exists('DatabaseMigrator')) {
+                DatabaseMigrator::run($pdo, false);
+            }
             @file_put_contents($hashFile, $currentHash);
         } catch (Throwable $t) {
             error_log("[COMAT AUTO-MIGRATE] Erro na migração automática: " . $t->getMessage());
         }
+    }
+
+    private static function autoMigrateIfNeeded($pdo) {
+        self::checkAutoMigrate($pdo);
     }
 }
 
 // Inicializa o carregamento do .env
 Config::loadEnv();
 
-// Executa auto-migração sob demanda com verificação de hash (100% automático na abertura do sistema)
-Config::checkAutoMigrate();

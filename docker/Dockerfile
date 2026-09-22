@@ -65,8 +65,14 @@ RUN echo '[supervisord]' > /etc/supervisord.conf \
     && echo 'stderr_logfile_maxbytes=0' >> /etc/supervisord.conf \
     && echo 'autorestart=true' >> /etc/supervisord.conf
 
+# Copia script de entrypoint para auto-migração de banco
+COPY ./docker-entrypoint.sh /docker-entrypoint.sh
+RUN chmod +x /docker-entrypoint.sh
+
 WORKDIR /var/www/html
 
 EXPOSE 80
 
+ENTRYPOINT ["/docker-entrypoint.sh"]
 CMD ["/usr/bin/supervisord", "-c", "/etc/supervisord.conf"]
+

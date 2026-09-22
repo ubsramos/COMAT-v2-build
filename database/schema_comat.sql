@@ -226,6 +226,49 @@ CREATE TABLE IF NOT EXISTS `tag` (
   `criado_em` DATETIME DEFAULT CURRENT_TIMESTAMP
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
+-- 13. Tabela: movimento (Histórico Físico de Movimentação de Estoque)
+CREATE TABLE IF NOT EXISTS `movimento` (
+  `id` INT AUTO_INCREMENT PRIMARY KEY,
+  `data` DATETIME DEFAULT CURRENT_TIMESTAMP,
+  `qtde` DECIMAL(12,2) NOT NULL DEFAULT 0.00,
+  `valor_produto` DECIMAL(12,2) NOT NULL DEFAULT 0.00,
+  `produto_id` INT NOT NULL,
+  `request_item_id` INT NULL,
+  `hash` VARCHAR(100) NULL,
+  `tipo` VARCHAR(30) NULL DEFAULT 'REQUISICAO',
+  `justificativa` TEXT NULL,
+  `usuario_nome` VARCHAR(255) NULL,
+  `criado_em` DATETIME DEFAULT CURRENT_TIMESTAMP
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- 14. Tabela: estoque_ajuste (Auditoria de Ajustes Oficiais de Estoque)
+CREATE TABLE IF NOT EXISTS `estoque_ajuste` (
+  `id` INT AUTO_INCREMENT PRIMARY KEY,
+  `produto_id` INT NOT NULL,
+  `tipo` VARCHAR(20) NOT NULL,
+  `qtde_anterior` DECIMAL(12,2) NOT NULL DEFAULT 0.00,
+  `qtde_ajuste` DECIMAL(12,2) NOT NULL DEFAULT 0.00,
+  `qtde_nova` DECIMAL(12,2) NOT NULL DEFAULT 0.00,
+  `valor_anterior` DECIMAL(12,2) NOT NULL DEFAULT 0.00,
+  `valor_novo` DECIMAL(12,2) NOT NULL DEFAULT 0.00,
+  `motivo` VARCHAR(255) NOT NULL,
+  `justificativa` TEXT NOT NULL,
+  `usuario_id` INT NULL,
+  `usuario_nome` VARCHAR(255) NULL,
+  `criado_em` DATETIME DEFAULT CURRENT_TIMESTAMP
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- 15. Tabela: estoque_backup_log (Snapshots e Backups de Segurança)
+CREATE TABLE IF NOT EXISTS `estoque_backup_log` (
+  `id` INT AUTO_INCREMENT PRIMARY KEY,
+  `nome_tabela` VARCHAR(100) NOT NULL UNIQUE,
+  `total_produtos` INT NOT NULL DEFAULT 0,
+  `qtde_total_estoque` DECIMAL(12,2) NOT NULL DEFAULT 0.00,
+  `valor_total_estoque` DECIMAL(12,2) NOT NULL DEFAULT 0.00,
+  `usuario_nome` VARCHAR(255) NULL,
+  `criado_em` DATETIME DEFAULT CURRENT_TIMESTAMP
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
 SET FOREIGN_KEY_CHECKS = 1;
 
 -- ==============================================================================

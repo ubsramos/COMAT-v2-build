@@ -230,7 +230,8 @@ $COMPOSE_CMD -f "$SCRIPT_DIR/docker-compose.yml" up -d --build
 
 # Executa migrações automáticas de integridade de tabelas
 echo -e "${YELLOW}Validando estrutura de tabelas e colunas no MySQL...${NC}"
-$COMPOSE_CMD -f "$SCRIPT_DIR/docker-compose.yml" exec -T comat_app php /var/www/html/backend/api/db_migrate.php 2>/dev/null || \
+docker exec comat_v2_app php /var/www/html/backend/db_migrate.php 2>/dev/null || \
+$COMPOSE_CMD -f "$SCRIPT_DIR/docker-compose.yml" exec -T comat_app php /var/www/html/backend/db_migrate.php 2>/dev/null || \
 docker exec comat_v2_app php /var/www/html/backend/api/db_migrate.php 2>/dev/null || true
 
 # Criacao do Servico Systemd Dedicado para Garantir Auto-Inicializacao do COMAT no Boot
