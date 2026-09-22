@@ -292,9 +292,9 @@ class EstoqueBackupController {
         $db->beginTransaction();
 
         try {
-            // ZERA O SALDO DE ESTOQUE e inativa todos os produtos da base ativa
+            // ZERA O SALDO DE ESTOQUE mantendo os produtos ativos no catálogo (status = 1)
             // (Isso protege as 1.680 Foreign Keys históricas de requisicao_item e movimento)
-            $db->exec("UPDATE `produto` SET `qtde_estoque` = 0, `qtde_reservado` = 0, `status` = 0");
+            $db->exec("UPDATE `produto` SET `qtde_estoque` = 0, `qtde_reservado` = 0 WHERE `status` = 1 OR `ativo` = 1");
 
             // 5. Mapeia departamentos existentes no banco em memória para alta performance
             $deptos = $db->query("SELECT id, TRIM(UPPER(descricao)) as nome FROM departamento")->fetchAll(PDO::FETCH_KEY_PAIR);

@@ -183,17 +183,16 @@ class ProdutosController {
             throw new Exception("Produto não encontrado", 404);
         }
 
-        $sql = "UPDATE produto SET descricao_resumo = ?, descricao_completa = ?, qtde_estoque = ?, " .
-               "valor_compra = ?, custo_medio = ?, codigo_barra = ?, codigo_interno = ?, " .
+        // TRAVA SAGRADA: A quantidade em estoque e o valor de compra NÃO podem ser alterados diretamente via cadastro.
+        // Apenas ajustes oficiais e auditados com justificativa através de ajustarEstoque() são permitidos.
+        $sql = "UPDATE produto SET descricao_resumo = ?, descricao_completa = ?, " .
+               "codigo_barra = ?, codigo_interno = ?, " .
                "status = ?, depto_id = ?, grupo_id = ? WHERE id = ?";
         
         $stmt = $db->prepare($sql);
         $stmt->execute([
             $d['descricao_resumo'] ?? null,
             $d['descricao_completa'] ?? null,
-            isset($d['qtde_estoque']) ? (int)$d['qtde_estoque'] : 0,
-            isset($d['valor_compra']) ? (float)$d['valor_compra'] : 0.0,
-            isset($d['custo_medio']) ? (float)$d['custo_medio'] : 0.0,
             $d['codigo_barra'] ?? null,
             $d['codigo_interno'] ?? null,
             isset($d['status']) ? (int)$d['status'] : 1,
@@ -214,6 +213,160 @@ class ProdutosController {
         $row = $stmt->fetch();
 
         return $this->fmt($row);
+    }
+
+    /**
+     * Ajuste de Estoque Oficial e Auditado
+     * Suporta Entrada (+), Saída (-) e Balanço / Inventário (=) com registro em estoque_ajuste e movimento
+     */
+    public function ajustarEstoque($id) {
+        $currentUser = Security::getCurrentUser();
+        Security::checkAccess($currentUser, ["CM17", "CM24"]);
+
+        $d = getJsonBody();
+        $tipo = strtoupper(trim($d['tipo'] ?? 'BALANCO')); // ENTRADA, SAIDA, BALANCO
+        $quantidade = isset($d['quantidade']) ? (float)$d['quantidade'] : 0.0;
+        $novoValor = isset($d['novo_valor']) && $d['novo_valor'] !== '' ? (float)$d['novo_valor'] : null;
+        $motivo = trim($d['motivo'] ?? 'AJUSTE DE INVENTÁRIO');
+        $justificativa = trim($d['justificativa'] ?? '');
+
+        if (!in_array($tipo, ['ENTRADA', 'SAIDA', 'BALANCO'])) {
+            throw new Exception("Tipo de ajuste inválido. Escolha ENTRADA, SAIDA ou BALANCO", 400);
+        }
+
+        if (empty($justificativa) || strlen($justificativa) < 4) {
+            throw new Exception("A justificativa do ajuste é obrigatória (mínimo 4 caracteres) para fins de governança e auditoria", 400);
+        }
+
+        if ($tipo === 'BALANCO' && $quantidade < 0) {
+            throw new Exception("O saldo final de balanço não pode ser negativo", 400);
+        }
+
+        if (($tipo === 'ENTRADA' || $tipo === 'SAIDA') && $quantidade <= 0) {
+            throw new Exception("A quantidade para movimentação deve ser maior que zero", 400);
+        }
+
+        $db = Config::getDb();
+        $db->beginTransaction();
+
+        try {
+            // Lock do registro do produto para evitar concorrência
+            $stmt = $db->prepare("SELECT id, qtde_estoque, valor_compra, descricao_resumo FROM produto WHERE id = ? FOR UPDATE");
+            $stmt->execute([$id]);
+            $prod = $stmt->fetch();
+
+            if (!$prod) {
+                throw new Exception("Produto não encontrado", 404);
+            }
+
+            $saldoAnterior = (float)$prod['qtde_estoque'];
+            $valorAnterior = (float)$prod['valor_compra'];
+
+            if ($tipo === 'ENTRADA') {
+                $delta = $quantidade;
+                $novoSaldo = $saldoAnterior + $quantidade;
+            } elseif ($tipo === 'SAIDA') {
+                $delta = -$quantidade;
+                $novoSaldo = $saldoAnterior - $quantidade;
+                if ($novoSaldo < 0) {
+                    throw new Exception("Saldo insuficiente em estoque para esta saída. Saldo atual: $saldoAnterior", 400);
+                }
+            } else { // BALANCO
+                $novoSaldo = $quantidade;
+                $delta = $novoSaldo - $saldoAnterior;
+            }
+
+            $valorFinal = ($novoValor !== null && $novoValor >= 0) ? $novoValor : $valorAnterior;
+            $usuarioNome = $currentUser['nome'] ?? $currentUser['login'] ?? 'Sistema';
+            $usuarioId = $currentUser['id'] ?? null;
+            $now = date('Y-m-d H:i:s');
+            $hash = md5(uniqid(rand(), true));
+
+            // 1. Grava na tabela de auditoria estoque_ajuste
+            try {
+                $stmtAjuste = $db->prepare("INSERT INTO estoque_ajuste 
+                    (produto_id, tipo, qtde_anterior, qtde_ajuste, qtde_nova, valor_anterior, valor_novo, motivo, justificativa, usuario_id, usuario_nome, criado_em)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)");
+                $stmtAjuste->execute([
+                    $id,
+                    $tipo,
+                    $saldoAnterior,
+                    $delta,
+                    $novoSaldo,
+                    $valorAnterior,
+                    $valorFinal,
+                    $motivo,
+                    $justificativa,
+                    $usuarioId,
+                    $usuarioNome,
+                    $now
+                ]);
+            } catch (Exception $e) {
+                // Se a tabela ainda não tiver sido criada pelo migrate, ignora silenciosamente
+            }
+
+            // 2. Grava na movimentação oficial
+            try {
+                $stmtMov = $db->prepare("INSERT INTO movimento 
+                    (data, qtde, valor_produto, produto_id, request_item_id, hash, tipo, justificativa, usuario_nome)
+                    VALUES (?, ?, ?, ?, NULL, ?, ?, ?, ?)");
+                $stmtMov->execute([
+                    $now,
+                    $delta,
+                    $valorFinal,
+                    $id,
+                    $hash,
+                    "AJUSTE_{$tipo}",
+                    "[Motivo: {$motivo}] {$justificativa}",
+                    $usuarioNome
+                ]);
+            } catch (Exception $e) {
+                // Fallback para schema sem colunas estendidas
+                $stmtMov = $db->prepare("INSERT INTO movimento 
+                    (data, qtde, valor_produto, produto_id, request_item_id, hash)
+                    VALUES (?, ?, ?, ?, NULL, ?)");
+                $stmtMov->execute([
+                    $now,
+                    $delta,
+                    $valorFinal,
+                    $id,
+                    $hash
+                ]);
+            }
+
+            // 3. Atualiza o produto com o novo saldo e valor
+            $stmtUp = $db->prepare("UPDATE produto SET qtde_estoque = ?, valor_compra = ? WHERE id = ?");
+            $stmtUp->execute([$novoSaldo, $valorFinal, $id]);
+
+            $db->commit();
+
+            // Retorna o produto atualizado
+            $stmtOne = $db->prepare("SELECT p.*, d.descricao AS depto_descricao, g.descricao AS grupo_descricao 
+                                     FROM produto p 
+                                     LEFT JOIN departamento d ON d.id = p.depto_id 
+                                     LEFT JOIN grupo g ON g.id = p.grupo_id 
+                                     WHERE p.id = ?");
+            $stmtOne->execute([$id]);
+            $row = $stmtOne->fetch();
+
+            return [
+                "success" => true,
+                "message" => "Ajuste de estoque realizado com sucesso!",
+                "auditoria" => [
+                    "tipo" => $tipo,
+                    "saldo_anterior" => $saldoAnterior,
+                    "saldo_novo" => $novoSaldo,
+                    "delta" => $delta,
+                    "valor_unitario" => $valorFinal,
+                    "justificativa" => $justificativa
+                ],
+                "produto" => $this->fmt($row)
+            ];
+
+        } catch (Exception $e) {
+            $db->rollBack();
+            throw $e;
+        }
     }
 
     public function uploadFoto($id) {

@@ -142,12 +142,18 @@ class Security {
                 exit;
             }
 
+            $info = self::getUserDeptosAndName($db, (int)$row['id'], 'usuario', $row['login'], (int)$row['nivel'], $row['acesso'] ?? '');
+
             return [
-                'id'     => (int)$row['id'],
-                'login'  => $row['login'],
-                'nivel'  => (int)$row['nivel'],
-                'type'   => 'usuario',
-                'acesso' => $row['acesso'] ?? '',
+                'id'            => (int)$row['id'],
+                'login'         => $row['login'],
+                'nome'          => $info['nome'],
+                'nivel'         => (int)$row['nivel'],
+                'type'          => 'usuario',
+                'acesso'        => $row['acesso'] ?? '',
+                'todos_deptos'  => $info['todos_deptos'],
+                'departamentos' => $info['departamentos'],
+                'deptos_nomes'  => $info['deptos_nomes'],
             ];
         } else {
             $stmt = $db->prepare(
@@ -163,17 +169,107 @@ class Security {
                 exit;
             }
 
+            $info = self::getUserDeptosAndName($db, (int)$row['id'], 'funcionario', $row['nome'], 9, $row['acesso'] ?? '', $row['depto_id'], $row['nome']);
+
             return [
                 'id'            => (int)$row['id'],
                 'login'         => $row['nome'],
+                'nome'          => $row['nome'],
                 'nivel'         => 9, // Funcionário padrão
                 'type'          => 'funcionario',
                 'acesso'        => $row['acesso'] ?? '',
                 'depto_id'      => $row['depto_id'] ? (int)$row['depto_id'] : null,
                 'admin_estoque' => (int)($row['admin_estoque'] ?? 0),
                 'login_ldap'    => $row['login_ldap'],
+                'todos_deptos'  => $info['todos_deptos'],
+                'departamentos' => $info['departamentos'],
+                'deptos_nomes'  => $info['deptos_nomes'],
             ];
         }
+    }
+
+    /**
+     * Auxiliar para recuperar lista de departamentos autorizados e nome completo do usuário
+     */
+    public static function getUserDeptosAndName($db, $userId, $userType, $login, $nivel, $acesso, $directDeptoId = null, $directNome = null) {
+        $isAdmin = ($userType === 'usuario' && ((int)$nivel <= 1 || $login === 'admin' || strpos((string)$acesso, 'ALL') !== false));
+        
+        // Administrador tem acesso a todos os departamentos da instituição
+        if ($isAdmin) {
+            try {
+                $stmt = $db->query("SELECT id, descricao FROM departamento ORDER BY descricao");
+                $allDeptos = $stmt->fetchAll(PDO::FETCH_ASSOC) ?: [];
+            } catch (Exception $e) {
+                $allDeptos = [];
+            }
+            return [
+                'nome' => $directNome ?: ($login === 'admin' ? 'Administrador' : $login),
+                'todos_deptos' => true,
+                'departamentos' => $allDeptos,
+                'deptos_nomes' => array_column($allDeptos, 'descricao')
+            ];
+        }
+
+        $funcId = null;
+        $nome = $directNome ?: $login;
+        $deptoId = $directDeptoId;
+
+        if ($userType === 'usuario') {
+            try {
+                $stmt = $db->prepare("SELECT id, nome, depto_id FROM funcionario WHERE usuario_id = ? OR login_ldap = ? LIMIT 1");
+                $stmt->execute([$userId, $login]);
+                $func = $stmt->fetch();
+                if ($func) {
+                    $funcId = (int)$func['id'];
+                    $nome = $func['nome'];
+                    $deptoId = $func['depto_id'];
+                }
+            } catch (Exception $e) {}
+        } else {
+            $funcId = $userId;
+        }
+
+        $deptos = [];
+        if ($funcId) {
+            // 1. Departamentos na tabela associativa funcionario_depto
+            try {
+                $stmt = $db->prepare("SELECT d.id, d.descricao 
+                                      FROM departamento d 
+                                      INNER JOIN funcionario_depto fd ON fd.depto_id = d.id 
+                                      WHERE fd.funcionario_id = ? 
+                                      ORDER BY d.descricao");
+                $stmt->execute([$funcId]);
+                $deptos = $stmt->fetchAll(PDO::FETCH_ASSOC) ?: [];
+            } catch (Exception $e) {}
+
+            // 2. Garante inclusão do depto_id principal caso ainda não conste na lista
+            if ($deptoId) {
+                $hasPrimary = false;
+                foreach ($deptos as $d) {
+                    if ((int)$d['id'] === (int)$deptoId) {
+                        $hasPrimary = true;
+                        break;
+                    }
+                }
+                if (!$hasPrimary) {
+                    try {
+                        $stmt = $db->prepare("SELECT id, descricao FROM departamento WHERE id = ?");
+                        $stmt->execute([$deptoId]);
+                        $primary = $stmt->fetch(PDO::FETCH_ASSOC);
+                        if ($primary) {
+                            array_unshift($deptos, $primary);
+                        }
+                    } catch (Exception $e) {}
+                }
+            }
+        }
+
+        return [
+            'nome' => $nome,
+            'todos_deptos' => false,
+            'departamentos' => $deptos,
+            'deptos_nomes' => array_column($deptos, 'descricao')
+        ];
     }
 
     /**

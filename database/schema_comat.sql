@@ -59,9 +59,19 @@ CREATE TABLE IF NOT EXISTS `funcionario` (
   `admin_estoque` TINYINT(1) NOT NULL DEFAULT 0,
   `email` VARCHAR(255) NULL,
   `telefone` VARCHAR(50) NULL,
+  `usuario_id` INT NULL,
   `hash` VARCHAR(64) NULL,
   `criado_em` DATETIME DEFAULT CURRENT_TIMESTAMP,
   CONSTRAINT `fk_func_depto` FOREIGN KEY (`depto_id`) REFERENCES `departamento` (`id`) ON DELETE SET NULL
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- 5.1 Tabela Associativa: funcionario_depto (Multi-Departamentos)
+CREATE TABLE IF NOT EXISTS `funcionario_depto` (
+  `funcionario_id` INT NOT NULL,
+  `depto_id` INT NOT NULL,
+  PRIMARY KEY (`funcionario_id`, `depto_id`),
+  CONSTRAINT `fk_fd_func` FOREIGN KEY (`funcionario_id`) REFERENCES `funcionario` (`id`) ON DELETE CASCADE,
+  CONSTRAINT `fk_fd_depto` FOREIGN KEY (`depto_id`) REFERENCES `departamento` (`id`) ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 -- 6. Tabela: produto (Catálogo de Materiais e Estoque)
@@ -165,6 +175,8 @@ CREATE TABLE IF NOT EXISTS `correspondencia` (
   `data_retirada` DATETIME NULL,
   `retirado_por` VARCHAR(255) NULL,
   `retirado_por_manual` VARCHAR(255) NULL,
+  `retirado_por_proprio` TINYINT(1) NOT NULL DEFAULT 0,
+  `meio_retirada` VARCHAR(100) NULL,
   `func_retirada_id` INT NULL,
   `obs_retirada` TEXT NULL,
   `email_enviado` TINYINT(1) NOT NULL DEFAULT 0,

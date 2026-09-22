@@ -71,6 +71,7 @@ $routes = [
     ['GET',    '/produtos/{id}',                      'ProdutosController@detalhe'],
     ['PUT',    '/produtos/{id}',                      'ProdutosController@atualizar'],
     ['DELETE', '/produtos/{id}',                      'ProdutosController@deletar'],
+    ['POST',   '/produtos/{id}/ajuste',               'ProdutosController@ajustarEstoque'],
     ['POST',   '/produtos/{id}/foto',                 'ProdutosController@uploadFoto'],
     ['POST',   '/produtos/importar',                  'ProdutosController@importarXlsx'],
 

@@ -213,16 +213,44 @@ class RequisicoesController {
         $currentUser = Security::getCurrentUser();
         Security::checkAccess($currentUser, ["CM21", "CM22"]);
 
-        if ($currentUser['type'] !== 'funcionario') {
-            throw new Exception("Apenas Funcionários podem criar Requisições", 403);
+        if ($currentUser['type'] !== 'funcionario' && $currentUser['type'] !== 'usuario') {
+            throw new Exception("Apenas Funcionários ou Usuários autenticados podem criar Requisições", 403);
         }
 
         $d = getJsonBody();
         $db = Config::getDb();
 
-        $stmt = $db->prepare("SELECT id, depto_id FROM funcionario WHERE id = ?");
-        $stmt->execute([$currentUser['id']]);
-        $func = $stmt->fetch();
+        $solicitanteId = null;
+        $deptoId = null;
+
+        if ($currentUser['type'] === 'funcionario') {
+            $stmt = $db->prepare("SELECT id, depto_id FROM funcionario WHERE id = ?");
+            $stmt->execute([$currentUser['id']]);
+            $func = $stmt->fetch();
+            if ($func) {
+                $solicitanteId = (int)$func['id'];
+                $deptoId = $func['depto_id'] ? (int)$func['depto_id'] : null;
+            }
+        } else {
+            // Usuário do sistema (admin / local): busca funcionário associado
+            $stmt = $db->prepare("SELECT id, depto_id FROM funcionario WHERE usuario_id = ? OR login_ldap = ? LIMIT 1");
+            $stmt->execute([$currentUser['id'], $currentUser['login'] ?? '']);
+            $func = $stmt->fetch();
+            if ($func) {
+                $solicitanteId = (int)$func['id'];
+                $deptoId = $func['depto_id'] ? (int)$func['depto_id'] : null;
+            } else {
+                $firstFunc = $db->query("SELECT id, depto_id FROM funcionario ORDER BY id ASC LIMIT 1")->fetch();
+                $solicitanteId = $firstFunc ? (int)$firstFunc['id'] : 1;
+                $deptoId = $firstFunc && $firstFunc['depto_id'] ? (int)$firstFunc['depto_id'] : 1;
+            }
+        }
+
+        $deptoDestino = !empty($d['depto_destino_id']) ? (int)$d['depto_destino_id'] : $deptoId;
+        $deptoOrigem = !empty($d['depto_origem_id']) ? (int)$d['depto_origem_id'] : $deptoId;
+        if (!empty($d['usuario_solicitante_id'])) {
+            $solicitanteId = (int)$d['usuario_solicitante_id'];
+        }
 
         $stmt = $db->query("SELECT id FROM parametros LIMIT 1");
         $entidade = $stmt->fetch();
@@ -230,6 +258,9 @@ class RequisicoesController {
 
         $hash = md5(uniqid(rand(), true));
         $now = date('Y-m-d H:i:s');
+
+        // Padrão de motivo: 1 para Saída de Material (Consumo Setorial)
+        $motivoId = isset($d['motivo_id']) && $d['motivo_id'] !== '' ? (int)$d['motivo_id'] : 1;
 
         $sql = "INSERT INTO requisicao (descricao, tag, numero_nf, data_pedido, hash, " .
                "motivo_id, depto_destino_id, depto_origem_id, usuario_solicitante_id, entidade_id) " .
@@ -242,10 +273,10 @@ class RequisicoesController {
             $d['numero_nf'] ?? null,
             $now,
             $hash,
-            isset($d['motivo_id']) ? (int)$d['motivo_id'] : 2,
-            (int)$func['depto_id'],
-            (int)$func['depto_id'],
-            (int)$func['id'],
+            $motivoId,
+            $deptoDestino,
+            $deptoOrigem,
+            $solicitanteId,
             $entidadeId
         ]);
 
@@ -391,7 +422,12 @@ class RequisicoesController {
             throw new Exception("Produto não encontrado", 404);
         }
 
-        if ((int)$req['motivo_id'] === 2 && (int)$produto['qtde_estoque'] < $qtde) {
+        $stmtMot = $db->prepare("SELECT tipo FROM motivo WHERE id = ?");
+        $stmtMot->execute([$req['motivo_id']]);
+        $motRow = $stmtMot->fetch();
+        $isSaida = $motRow ? (strtoupper($motRow['tipo'] ?? '') === 'SAIDA') : ($req['motivo_id'] == 1);
+
+        if ($isSaida && (int)$produto['qtde_estoque'] < $qtde) {
             throw new Exception("Estoque insuficiente. Disponível: " . $produto['qtde_estoque'], 400);
         }
 
@@ -459,18 +495,65 @@ class RequisicoesController {
         $d = getJsonBody();
         $password = $d['password'] ?? '';
 
+        if (empty($password)) {
+            throw new Exception("Informe a senha de confirmação para aprovar", 400);
+        }
+
         $db = Config::getDb();
 
-        $stmt = $db->prepare("SELECT id, login_ldap, nome FROM funcionario WHERE id = ?");
-        $stmt->execute([$currentUser['id']]);
-        $func = $stmt->fetch();
+        $isAdmin = ($currentUser['type'] === 'usuario' && (
+            $currentUser['login'] === 'admin' || 
+            (int)($currentUser['nivel'] ?? 9) <= 1 || 
+            ($currentUser['acesso'] ?? '') === 'ALL'
+        ));
 
-        if (!$func) {
-            throw new Exception("Precisa ser Funcionário para aprovar", 403);
+        $aprovadorId = null;
+        $pwOk = false;
+
+        if ($currentUser['type'] === 'usuario') {
+            // Usuário local / Administrador
+            $stmtU = $db->prepare("SELECT id, senha, login FROM usuario WHERE id = ?");
+            $stmtU->execute([$currentUser['id']]);
+            $u = $stmtU->fetch();
+            if ($u) {
+                $pwOk = Security::verificarSenha($password, $u['senha']);
+            }
+
+            // Tenta encontrar funcionário associado
+            $stmtFunc = $db->prepare("SELECT id FROM funcionario WHERE usuario_id = ? OR login_ldap = ? LIMIT 1");
+            $stmtFunc->execute([$currentUser['id'], $currentUser['login'] ?? '']);
+            $fRow = $stmtFunc->fetch();
+            $aprovadorId = $fRow ? (int)$fRow['id'] : 1;
+        } else {
+            // Funcionário
+            $stmt = $db->prepare("SELECT id, login_ldap, nome FROM funcionario WHERE id = ?");
+            $stmt->execute([$currentUser['id']]);
+            $func = $stmt->fetch();
+
+            if (!$func) {
+                throw new Exception("Funcionário não encontrado", 404);
+            }
+            $aprovadorId = (int)$func['id'];
+
+            if (!empty($func['login_ldap'])) {
+                $pwOk = Security::tryLdapAuth($func['login_ldap'], $password);
+            }
+            if (!$pwOk) {
+                $stmtU = $db->prepare("SELECT senha FROM usuario WHERE login = ?");
+                $stmtU->execute([$func['login_ldap'] ?? '']);
+                $u = $stmtU->fetch();
+                if ($u) {
+                    $pwOk = Security::verificarSenha($password, $u['senha']);
+                }
+            }
+        }
+
+        if (!$pwOk) {
+            throw new Exception("Senha de confirmação inválida", 400);
         }
 
         $stmt = $db->prepare(
-            "SELECT r.id, dep.user_auth FROM requisicao r " .
+            "SELECT r.id, dep.user_auth, r.depto_destino_id FROM requisicao r " .
             "LEFT JOIN departamento dep ON dep.id = r.depto_destino_id " .
             "WHERE r.id = ?"
         );
@@ -481,31 +564,24 @@ class RequisicoesController {
             throw new Exception("Requisição não encontrada", 404);
         }
 
-        // Verifica autorização no departamento
-        $authIds = array_filter(array_map('trim', explode(',', $req['user_auth'] ?? '')));
-        if (!in_array((string)$func['id'], $authIds)) {
-            throw new Exception("Usuário não autorizado a aprovar", 403);
-        }
+        // Se não for admin supremo, verifica autorização no departamento
+        if (!$isAdmin) {
+            $authIds = array_filter(array_map('trim', explode(',', $req['user_auth'] ?? '')));
+            $userDeptos = $currentUser['departamentos'] ?? [];
+            $loginLower = strtolower($currentUser['login'] ?? '');
+            
+            $temAuth = in_array((string)$aprovadorId, $authIds) ||
+                       in_array($loginLower, array_map('strtolower', $authIds)) ||
+                       in_array((int)$req['depto_destino_id'], $userDeptos) ||
+                       !empty($currentUser['todos_deptos']);
 
-        // Valida senha
-        $pwOk = false;
-        if (!empty($func['login_ldap'])) {
-            $pwOk = Security::tryLdapAuth($func['login_ldap'], $password);
-        }
-        if (!$pwOk) {
-            $stmt = $db->prepare("SELECT senha FROM usuario WHERE login = ?");
-            $stmt->execute([$func['login_ldap'] ?? '']);
-            $u = $stmt->fetch();
-            if ($u) {
-                $pwOk = Security::verificarSenha($password, $u['senha']);
+            if (!$temAuth) {
+                throw new Exception("Usuário não possui autorização para aprovar requisições deste departamento", 403);
             }
-        }
-        if (!$pwOk) {
-            throw new Exception("Senha inválida", 400);
         }
 
         $stmt = $db->prepare("UPDATE requisicao SET status = 1, usuario_aprovador_id = ? WHERE id = ?");
-        $stmt->execute([$func['id'], $id]);
+        $stmt->execute([$aprovadorId, $id]);
 
         // Envia notificações de aprovação de saída de material
         try {
@@ -583,6 +659,13 @@ class RequisicoesController {
             throw new Exception("Requisição não encontrada ou não aprovada", 404);
         }
 
+        // Descobre se o motivo é de ENTRADA ou SAÍDA no banco
+        $stmtMot = $db->prepare("SELECT tipo FROM motivo WHERE id = ?");
+        $stmtMot->execute([$req['motivo_id']]);
+        $motRow = $stmtMot->fetch();
+        $tipoMotivo = strtoupper($motRow['tipo'] ?? ($req['motivo_id'] == 2 ? 'ENTRADA' : 'SAIDA'));
+        $isEntrada = ($tipoMotivo === 'ENTRADA');
+
         // Começa uma transação para garantir integridade do estoque
         $db->beginTransaction();
         try {
@@ -590,30 +673,50 @@ class RequisicoesController {
             $stmt->execute([$id]);
             $itens = $stmt->fetchAll();
 
+            $usuarioNome = $currentUser['nome'] ?? $currentUser['login'] ?? 'Sistema';
+
             foreach ($itens as $item) {
-                $delta = (int)$req['motivo_id'] === 1 ? (int)$item['qtde'] : -(int)$item['qtde'];
+                $qtdeItem = (float)$item['qtde'];
+                $delta = $isEntrada ? $qtdeItem : -$qtdeItem;
                 $hash = md5(uniqid(rand(), true));
 
-                // Registra movimentação
-                $stmtMov = $db->prepare(
-                    "INSERT INTO movimento (data, qtde, valor_produto, produto_id, request_item_id, hash) " .
-                    "VALUES (?, ?, ?, ?, ?, ?)"
-                );
-                $stmtMov->execute([
-                    $now,
-                    $delta,
-                    $item['valor_produto'],
-                    $item['produto_id'],
-                    $item['id'],
-                    $hash
-                ]);
+                // Registra movimentação oficial
+                try {
+                    $stmtMov = $db->prepare(
+                        "INSERT INTO movimento (data, qtde, valor_produto, produto_id, request_item_id, hash, tipo, usuario_nome) " .
+                        "VALUES (?, ?, ?, ?, ?, ?, ?, ?)"
+                    );
+                    $stmtMov->execute([
+                        $now,
+                        $delta,
+                        $item['valor_produto'],
+                        $item['produto_id'],
+                        $item['id'],
+                        $hash,
+                        $isEntrada ? 'REQ_ENTRADA' : 'REQ_SAIDA',
+                        $usuarioNome
+                    ]);
+                } catch (Exception $e) {
+                    $stmtMov = $db->prepare(
+                        "INSERT INTO movimento (data, qtde, valor_produto, produto_id, request_item_id, hash) " .
+                        "VALUES (?, ?, ?, ?, ?, ?)"
+                    );
+                    $stmtMov->execute([
+                        $now,
+                        $delta,
+                        $item['valor_produto'],
+                        $item['produto_id'],
+                        $item['id'],
+                        $hash
+                    ]);
+                }
 
                 // Atualiza estoque do produto
                 $stmtProd = $db->prepare("UPDATE produto SET qtde_estoque = qtde_estoque + ? WHERE id = ?");
                 $stmtProd->execute([$delta, $item['produto_id']]);
 
-                // Entrada: atualiza valor de compra
-                if ((int)$req['motivo_id'] === 1) {
+                // Entrada: atualiza valor de compra se informado
+                if ($isEntrada && !empty($item['valor_produto']) && (float)$item['valor_produto'] > 0) {
                     $stmtPrice = $db->prepare("UPDATE produto SET valor_compra = ? WHERE id = ?");
                     $stmtPrice->execute([$item['valor_produto'], $item['produto_id']]);
                 }

@@ -23,15 +23,20 @@ class AuthController {
 
         if ($usuario && Security::verificarSenha($password, $usuario['senha'])) {
             $token = Security::gerarToken($usuario['id'], 'usuario');
+            $info = Security::getUserDeptosAndName($db, (int)$usuario['id'], 'usuario', $usuario['login'], (int)$usuario['nivel'], $usuario['acesso'] ?? '');
             return [
                 "access_token" => $token,
                 "token_type" => "bearer",
                 "user" => [
-                    "id"     => (int)$usuario['id'],
-                    "login"  => $usuario['login'],
-                    "nivel"  => (int)$usuario['nivel'],
-                    "type"   => "usuario",
-                    "acesso" => $usuario['acesso'] ?: "",
+                    "id"            => (int)$usuario['id'],
+                    "login"         => $usuario['login'],
+                    "nome"          => $info['nome'],
+                    "nivel"         => (int)$usuario['nivel'],
+                    "type"          => "usuario",
+                    "acesso"        => $usuario['acesso'] ?: "",
+                    "todos_deptos"  => $info['todos_deptos'],
+                    "departamentos" => $info['departamentos'],
+                    "deptos_nomes"  => $info['deptos_nomes'],
                 ]
             ];
         }
@@ -46,17 +51,22 @@ class AuthController {
 
         if ($func && Security::tryLdapAuth($username, $password)) {
             $token = Security::gerarToken($func['id'], 'funcionario');
+            $info = Security::getUserDeptosAndName($db, (int)$func['id'], 'funcionario', $func['nome'], 9, $func['acesso'] ?? '', $func['depto_id'], $func['nome']);
             return [
                 "access_token" => $token,
                 "token_type" => "bearer",
                 "user" => [
                     "id"            => (int)$func['id'],
                     "login"         => $func['nome'],
+                    "nome"          => $func['nome'],
                     "nivel"         => 9,
                     "type"          => "funcionario",
                     "acesso"        => $func['acesso'] ?: "",
                     "depto_id"      => $func['depto_id'] ? (int)$func['depto_id'] : null,
                     "admin_estoque" => (int)($func['admin_estoque'] ?? 0),
+                    "todos_deptos"  => $info['todos_deptos'],
+                    "departamentos" => $info['departamentos'],
+                    "deptos_nomes"  => $info['deptos_nomes'],
                 ]
             ];
         }

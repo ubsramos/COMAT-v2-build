@@ -129,19 +129,70 @@ class DashboardController {
         $stmt->execute($paramsReq);
         $req_atendidas = (int)($stmt->fetch()['c'] ?? 0);
 
-        // Valor Estoque
-        $sqlValorEst = "SELECT COALESCE(SUM(p.qtde_estoque * p.valor_compra), 0) AS v
-                        FROM produto p
-                        WHERE p.id IN (
-                            SELECT DISTINCT ri.produto_id
-                            FROM requisicao_item ri
-                            INNER JOIN requisicao r ON r.id = ri.request_id
-                            INNER JOIN produto p ON p.id = ri.produto_id
-                            $whereReq
-                        )";
-        $stmt = $db->prepare($sqlValorEst);
-        $stmt->execute($paramsReq);
-        $valor_est = (float)($stmt->fetch()['v'] ?? 0.0);
+        // 3.1 Valor do Estoque e Posição Atual do Estoque Físico Real (Ativo no catálogo)
+        $whereEstoqueReal = " WHERE p.status = 1";
+        $paramsEstoqueReal = [];
+        if ($depto_id) {
+            $whereEstoqueReal .= " AND p.depto_id = ?";
+            $paramsEstoqueReal[] = $depto_id;
+        }
+        if ($grupo_id) {
+            $whereEstoqueReal .= " AND p.grupo_id = ?";
+            $paramsEstoqueReal[] = $grupo_id;
+        }
+        if ($produto_id) {
+            $whereEstoqueReal .= " AND p.id = ?";
+            $paramsEstoqueReal[] = $produto_id;
+        }
+
+        $sqlPosicaoEstoque = "SELECT 
+            COUNT(*) as total_catalogo,
+            COUNT(CASE WHEN p.qtde_estoque > 0 THEN 1 END) as total_itens_saldo,
+            COUNT(CASE WHEN p.qtde_estoque > 0 AND p.valor_compra > 0 THEN 1 END) as total_itens_com_valor,
+            COALESCE(SUM(CASE WHEN p.qtde_estoque > 0 THEN p.qtde_estoque ELSE 0 END), 0) as total_unidades,
+            COALESCE(SUM(CASE WHEN p.qtde_estoque > 0 THEN p.qtde_estoque * p.valor_compra ELSE 0 END), 0) as valor_total_estoque
+        FROM produto p
+        $whereEstoqueReal";
+        
+        $stmtPE = $db->prepare($sqlPosicaoEstoque);
+        $stmtPE->execute($paramsEstoqueReal);
+        $peStats = $stmtPE->fetch(PDO::FETCH_ASSOC);
+
+        // Lista dos produtos que têm valor e saldo em estoque
+        $sqlItensEstoque = "SELECT 
+            p.id,
+            p.descricao_resumo,
+            p.codigo_interno,
+            p.qtde_estoque,
+            p.valor_compra,
+            (p.qtde_estoque * p.valor_compra) AS subtotal,
+            d.descricao AS depto_nome,
+            g.descricao AS grupo_nome
+        FROM produto p
+        LEFT JOIN departamento d ON d.id = p.depto_id
+        LEFT JOIN grupo g ON g.id = p.grupo_id
+        $whereEstoqueReal AND p.qtde_estoque > 0
+        ORDER BY subtotal DESC, p.descricao_resumo ASC";
+        
+        $stmtIE = $db->prepare($sqlItensEstoque);
+        $stmtIE->execute($paramsEstoqueReal);
+        $itensEstoqueRaw = $stmtIE->fetchAll(PDO::FETCH_ASSOC);
+
+        $itens_estoque_valorado = [];
+        foreach ($itensEstoqueRaw as $it) {
+            $itens_estoque_valorado[] = [
+                "id" => (int)$it['id'],
+                "descricao_resumo" => $it['descricao_resumo'],
+                "codigo_interno" => $it['codigo_interno'] ?? '',
+                "qtde_estoque" => (float)$it['qtde_estoque'],
+                "valor_compra" => (float)$it['valor_compra'],
+                "subtotal" => (float)$it['subtotal'],
+                "depto_nome" => $it['depto_nome'] ?? '—',
+                "grupo_nome" => $it['grupo_nome'] ?? '—'
+            ];
+        }
+
+        $valor_est = (float)($peStats['valor_total_estoque'] ?? 0.0);
 
 
         // 4. Movimentação por dia (entradas e saídas no período)
@@ -287,6 +338,14 @@ class DashboardController {
             "requisicoes_aprovadas" => $req_aprovadas,
             "requisicoes_atendidas" => $req_atendidas,
             "valor_estoque" => $valor_est,
+            "posicao_estoque" => [
+                "valor_total" => $valor_est,
+                "total_catalogo" => (int)($peStats['total_catalogo'] ?? 0),
+                "total_itens_saldo" => (int)($peStats['total_itens_saldo'] ?? 0),
+                "total_itens_com_valor" => (int)($peStats['total_itens_com_valor'] ?? 0),
+                "total_unidades" => (float)($peStats['total_unidades'] ?? 0.0),
+                "itens_valorados" => $itens_estoque_valorado
+            ],
             "periodo_grafico" => $periodo_label,
             "movimentacao_chart" => $movimentacao_chart,
             "top_produtos" => $top_produtos,

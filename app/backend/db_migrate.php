@@ -14,12 +14,27 @@ try {
         function columnExists($db, $table, $column) {
             try {
                 $stmt = $db->query("SHOW COLUMNS FROM `$table` LIKE '$column'");
-                return $stmt->rowCount() > 0;
+                return $stmt && $stmt->rowCount() > 0;
             } catch (Exception $e) {
                 return false;
             }
         }
     }
+
+    // Criar tabela de movimentação física caso não exista
+    $db->exec("CREATE TABLE IF NOT EXISTS `movimento` (
+      `id` INT AUTO_INCREMENT PRIMARY KEY,
+      `data` DATETIME DEFAULT CURRENT_TIMESTAMP,
+      `qtde` DECIMAL(12,2) NOT NULL DEFAULT 0.00,
+      `valor_produto` DECIMAL(12,2) NOT NULL DEFAULT 0.00,
+      `produto_id` INT NOT NULL,
+      `request_item_id` INT NULL,
+      `hash` VARCHAR(100) NULL,
+      `tipo` VARCHAR(30) NULL DEFAULT 'REQUISICAO',
+      `justificativa` TEXT NULL,
+      `usuario_nome` VARCHAR(255) NULL,
+      `criado_em` DATETIME DEFAULT CURRENT_TIMESTAMP
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;");
 
     $migrations = [
         // Tabela: produto
@@ -102,7 +117,15 @@ try {
         ['correspondencia', 'email_erro', 'ALTER TABLE `correspondencia` ADD COLUMN `email_erro` TEXT NULL AFTER `email_enviado`'],
         ['correspondencia', 'obs_retirada', 'ALTER TABLE `correspondencia` ADD COLUMN `obs_retirada` TEXT NULL AFTER `data_retirada`'],
         ['correspondencia', 'func_retirada_id', 'ALTER TABLE `correspondencia` ADD COLUMN `func_retirada_id` INT NULL AFTER `obs_retirada`'],
-        ['correspondencia', 'retirado_por_manual', 'ALTER TABLE `correspondencia` ADD COLUMN `retirado_por_manual` VARCHAR(255) NULL AFTER `func_retirada_id`']
+        ['correspondencia', 'retirado_por_manual', 'ALTER TABLE `correspondencia` ADD COLUMN `retirado_por_manual` VARCHAR(255) NULL AFTER `func_retirada_id`'],
+        ['correspondencia', 'retirado_por_proprio', 'ALTER TABLE `correspondencia` ADD COLUMN `retirado_por_proprio` TINYINT(1) NOT NULL DEFAULT 0 AFTER `retirado_por_manual`'],
+        ['correspondencia', 'meio_retirada', 'ALTER TABLE `correspondencia` ADD COLUMN `meio_retirada` VARCHAR(100) NULL AFTER `retirado_por_proprio`'],
+        ['funcionario', 'usuario_id', 'ALTER TABLE `funcionario` ADD COLUMN `usuario_id` INT NULL AFTER `id`'],
+        
+        // Tabela: movimento
+        ['movimento', 'tipo', 'ALTER TABLE `movimento` ADD COLUMN `tipo` VARCHAR(30) NULL DEFAULT \'REQUISICAO\' AFTER `hash`'],
+        ['movimento', 'justificativa', 'ALTER TABLE `movimento` ADD COLUMN `justificativa` TEXT NULL AFTER `tipo`'],
+        ['movimento', 'usuario_nome', 'ALTER TABLE `movimento` ADD COLUMN `usuario_nome` VARCHAR(255) NULL AFTER `justificativa`']
     ];
 
     $executed = 0;
@@ -114,6 +137,24 @@ try {
             $executed++;
         }
     }
+
+    // Criar tabela associativa funcionario_depto para suporte a múltiplos departamentos
+    $db->exec("CREATE TABLE IF NOT EXISTS `funcionario_depto` (
+      `funcionario_id` INT NOT NULL,
+      `depto_id` INT NOT NULL,
+      PRIMARY KEY (`funcionario_id`, `depto_id`)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;");
+
+    // Sincronizar depto_id inicial de cada funcionario para funcionario_depto caso tabela esteja vazia
+    try {
+        $db->exec("INSERT IGNORE INTO `funcionario_depto` (`funcionario_id`, `depto_id`)
+                   SELECT `id`, `depto_id` FROM `funcionario` WHERE `depto_id` IS NOT NULL AND `depto_id` > 0;");
+    } catch (Exception $e) {}
+
+    // Restaurar status do catálogo de produtos caso tenham sido inativados indevidamente pelo reset
+    try {
+        $db->exec("UPDATE `produto` SET `status` = 1 WHERE `status` = 0 AND `ativo` = 1;");
+    } catch (Exception $e) {}
 
     // Criar tabela tag caso nao exista
     $db->exec("CREATE TABLE IF NOT EXISTS `tag` (
@@ -129,6 +170,23 @@ try {
       `total_produtos` INT NOT NULL DEFAULT 0,
       `qtde_total_estoque` DECIMAL(12,2) NOT NULL DEFAULT 0.00,
       `valor_total_estoque` DECIMAL(12,2) NOT NULL DEFAULT 0.00,
+      `usuario_nome` VARCHAR(255) NULL,
+      `criado_em` DATETIME DEFAULT CURRENT_TIMESTAMP
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;");
+
+    // Criar tabela de auditoria de ajustes de estoque
+    $db->exec("CREATE TABLE IF NOT EXISTS `estoque_ajuste` (
+      `id` INT AUTO_INCREMENT PRIMARY KEY,
+      `produto_id` INT NOT NULL,
+      `tipo` VARCHAR(20) NOT NULL,
+      `qtde_anterior` DECIMAL(12,2) NOT NULL DEFAULT 0.00,
+      `qtde_ajuste` DECIMAL(12,2) NOT NULL DEFAULT 0.00,
+      `qtde_nova` DECIMAL(12,2) NOT NULL DEFAULT 0.00,
+      `valor_anterior` DECIMAL(12,2) NOT NULL DEFAULT 0.00,
+      `valor_novo` DECIMAL(12,2) NOT NULL DEFAULT 0.00,
+      `motivo` VARCHAR(255) NOT NULL,
+      `justificativa` TEXT NOT NULL,
+      `usuario_id` INT NULL,
       `usuario_nome` VARCHAR(255) NULL,
       `criado_em` DATETIME DEFAULT CURRENT_TIMESTAMP
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;");

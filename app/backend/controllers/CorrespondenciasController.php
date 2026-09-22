@@ -21,6 +21,10 @@ class CorrespondenciasController {
         $row['recebedor_id'] = $row['recebedor_id'] ? (int)$row['recebedor_id'] : null;
         $row['func_retirada_id'] = $row['func_retirada_id'] ? (int)$row['func_retirada_id'] : null;
         $row['email_enviado'] = (int)$row['email_enviado'];
+        $row['retirado_por_proprio'] = (int)($row['retirado_por_proprio'] ?? 0);
+        $row['retirado_por_manual'] = $row['retirado_por_manual'] ?? '';
+        $row['meio_retirada'] = $row['meio_retirada'] ?? 'EM_MAOS';
+        $row['obs_retirada'] = $row['obs_retirada'] ?? '';
 
         foreach (['data_chegada', 'data_retirada', 'created_at', 'updated_at'] as $field) {
             if (!empty($row[$field])) {
@@ -407,13 +411,16 @@ class CorrespondenciasController {
         Security::checkAccess($currentUser, ["CM40"]);
 
         $d = getJsonBody();
-        $func_retirada_id = $d['func_retirada_id'] ?? null;
-        if (!$func_retirada_id) {
-            throw new Exception("Informe quem retirou o objeto", 400);
-        }
+        $proprio = !empty($d['retirado_por_proprio']) ? 1 : 0;
+        $func_retirada_id = !empty($d['func_retirada_id']) ? (int)$d['func_retirada_id'] : null;
+        $retirado_por_manual = trim($d['retirado_por_manual'] ?? '');
+        $meio_retirada = trim($d['meio_retirada'] ?? 'EM_MAOS');
+        $data_retirada_input = $d['data_retirada'] ?? null;
+        $data_retirada = !empty($data_retirada_input) ? date('Y-m-d H:i:s', strtotime($data_retirada_input)) : date('Y-m-d H:i:s');
+        $obs_retirada = trim($d['obs_retirada'] ?? '');
 
         $db = Config::getDb();
-        $stmt = $db->prepare("SELECT id, status FROM correspondencia WHERE id = ?");
+        $stmt = $db->prepare("SELECT id, status, func_destino_id FROM correspondencia WHERE id = ?");
         $stmt->execute([$id]);
         $row = $stmt->fetch();
 
@@ -424,17 +431,34 @@ class CorrespondenciasController {
             throw new Exception("Esta correspondência já foi retirada ou devolvida", 400);
         }
 
-        $now = date('Y-m-d H:i:s');
+        if ($proprio) {
+            if (!$func_retirada_id && !empty($row['func_destino_id'])) {
+                $func_retirada_id = (int)$row['func_destino_id'];
+            }
+        } else {
+            if (!$func_retirada_id && empty($retirado_por_manual)) {
+                throw new Exception("Informe quem retirou o objeto (selecione um funcionário ou informe o nome do terceiro)", 400);
+            }
+        }
+
         $sql = "UPDATE correspondencia
-                SET status = 'retirado', data_retirada = ?,
-                    func_retirada_id = ?, obs_retirada = ?
+                SET status = 'retirado',
+                    data_retirada = ?,
+                    func_retirada_id = ?,
+                    retirado_por_proprio = ?,
+                    retirado_por_manual = ?,
+                    meio_retirada = ?,
+                    obs_retirada = ?
                 WHERE id = ?";
         
         $stmt = $db->prepare($sql);
         $stmt->execute([
-            $now,
+            $data_retirada,
             $func_retirada_id,
-            $d['obs_retirada'] ?? null,
+            $proprio,
+            $retirado_por_manual ?: null,
+            $meio_retirada ?: 'EM_MAOS',
+            $obs_retirada ?: null,
             $id
         ]);
 
