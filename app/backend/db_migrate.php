@@ -64,7 +64,10 @@ try {
         
         // Tabela: requisicao
         ['requisicao', 'data_pedido', 'ALTER TABLE `requisicao` ADD COLUMN `data_pedido` DATETIME NULL DEFAULT CURRENT_TIMESTAMP AFTER `numero`'],
-        ['requisicao', 'descricao', 'ALTER TABLE `requisicao` ADD COLUMN `descricao` VARCHAR(255) NULL AFTER `data_pedido`'],
+        ['requisicao', 'data_aprovacao', 'ALTER TABLE `requisicao` ADD COLUMN `data_aprovacao` DATETIME NULL AFTER `data_pedido`'],
+        ['requisicao', 'data_processamento', 'ALTER TABLE `requisicao` ADD COLUMN `data_processamento` DATETIME NULL AFTER `data_aprovacao`'],
+        ['requisicao', 'data_atendido', 'ALTER TABLE `requisicao` ADD COLUMN `data_atendido` DATETIME NULL AFTER `data_processamento`'],
+        ['requisicao', 'descricao', 'ALTER TABLE `requisicao` ADD COLUMN `descricao` VARCHAR(255) NULL AFTER `data_atendido`'],
         ['requisicao', 'tag', 'ALTER TABLE `requisicao` ADD COLUMN `tag` VARCHAR(100) NULL AFTER `descricao`'],
         ['requisicao', 'numero_nf', 'ALTER TABLE `requisicao` ADD COLUMN `numero_nf` VARCHAR(100) NULL AFTER `tag`'],
         ['requisicao', 'hash', 'ALTER TABLE `requisicao` ADD COLUMN `hash` VARCHAR(64) NULL AFTER `numero_nf`'],

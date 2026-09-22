@@ -801,10 +801,32 @@ class RequisicoesController {
 
             $funcId = $currentUser['type'] === 'funcionario' ? $currentUser['id'] : null;
 
-            $stmtReqUpdate = $db->prepare(
-                "UPDATE requisicao SET status = 3, data_atendido = ?, usuario_atendente_id = ? WHERE id = ?"
-            );
-            $stmtReqUpdate->execute([$now, $funcId, $id]);
+            // Atualização resiliente do status de atendimento/processamento
+            try {
+                $stmtReqUpdate = $db->prepare(
+                    "UPDATE requisicao SET status = 3, data_processamento = ?, data_atendido = ?, usuario_atendente_id = ? WHERE id = ?"
+                );
+                $stmtReqUpdate->execute([$now, $now, $funcId, $id]);
+            } catch (Exception $e) {
+                try {
+                    $stmtReqUpdate = $db->prepare(
+                        "UPDATE requisicao SET status = 3, data_processamento = ?, usuario_atendente_id = ? WHERE id = ?"
+                    );
+                    $stmtReqUpdate->execute([$now, $funcId, $id]);
+                } catch (Exception $e2) {
+                    try {
+                        $stmtReqUpdate = $db->prepare(
+                            "UPDATE requisicao SET status = 3, data_atendido = ?, usuario_atendente_id = ? WHERE id = ?"
+                        );
+                        $stmtReqUpdate->execute([$now, $funcId, $id]);
+                    } catch (Exception $e3) {
+                        $stmtReqUpdate = $db->prepare(
+                            "UPDATE requisicao SET status = 3, usuario_atendente_id = ? WHERE id = ?"
+                        );
+                        $stmtReqUpdate->execute([$funcId, $id]);
+                    }
+                }
+            }
 
             $db->commit();
 

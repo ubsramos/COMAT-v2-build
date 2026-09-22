@@ -28,15 +28,17 @@ class RelatoriosController {
         $sql = "SELECT
                     p.descricao_resumo,
                     r.id AS requisicao,
-                    mot.descricao AS motivo,
+                    COALESCE(mot.descricao, mov.tipo, 'Movimentação') AS motivo,
                     p.qtde_estoque AS estoque_atual,
                     mov.data,
-                    mov.qtde
+                    mov.qtde,
+                    mov.valor_produto,
+                    COALESCE(mov.usuario_nome, 'Sistema') AS usuario
                 FROM movimento mov
-                INNER JOIN requisicao_item  ri  ON ri.id  = mov.request_item_id
-                INNER JOIN requisicao       r   ON r.id   = ri.request_id
-                INNER JOIN produto          p   ON p.id   = mov.produto_id
-                LEFT JOIN  motivo           mot ON mot.id = r.motivo_id
+                LEFT JOIN requisicao_item ri  ON ri.id  = mov.request_item_id
+                LEFT JOIN requisicao      r   ON r.id   = ri.request_id
+                INNER JOIN produto        p   ON p.id   = mov.produto_id
+                LEFT JOIN  motivo         mot ON mot.id = r.motivo_id
                 WHERE mov.data BETWEEN ? AND ?
                 ORDER BY mov.data DESC, p.descricao_resumo";
         
@@ -52,9 +54,10 @@ class RelatoriosController {
                 $dateStr = $dObj->format('Y-m-d\TH:i:s');
             }
             $row['data'] = $dateStr;
-            $row['requisicao'] = (int)$row['requisicao'];
-            $row['estoque_atual'] = (int)$row['estoque_atual'];
-            $row['qtde'] = (int)$row['qtde'];
+            $row['requisicao'] = $row['requisicao'] ? (int)$row['requisicao'] : null;
+            $row['estoque_atual'] = (float)$row['estoque_atual'];
+            $row['qtde'] = (float)$row['qtde'];
+            $row['valor_produto'] = (float)($row['valor_produto'] ?? 0);
             $result[] = $row;
         }
 
@@ -63,7 +66,7 @@ class RelatoriosController {
 
     public function situacaoEstoque() {
         $currentUser = Security::getCurrentUser();
-        Security::checkAccess($currentUser, ["CM26"]);
+        Security::checkAccess($currentUser, ["CM32", "CM26"]);
 
         $data_ini = $_GET['data_ini'] ?? null;
         $data_fim = $_GET['data_fim'] ?? null;
@@ -78,68 +81,48 @@ class RelatoriosController {
         $sql = "SELECT
                     dep.descricao AS depto,
                     p.descricao_resumo AS produto,
+                    p.qtde_estoque,
+                    p.valor_compra,
 
-                    /* Saldo anterior */
+                    /* Entradas no período selecionado (qtde > 0) */
                     COALESCE((
-                        SELECT SUM(m2.qtde)
-                        FROM movimento m2
-                        INNER JOIN requisicao_item ri2 ON ri2.id = m2.request_item_id
-                        INNER JOIN requisicao r2 ON r2.id = ri2.request_id
-                        WHERE m2.produto_id = p.id AND m2.data < ?
-                    ), 0) AS qtde_ant,
-
-                    COALESCE((
-                        SELECT SUM(m2.qtde * m2.valor_produto)
-                        FROM movimento m2
-                        INNER JOIN requisicao_item ri2 ON ri2.id = m2.request_item_id
-                        INNER JOIN requisicao r2 ON r2.id = ri2.request_id
-                        WHERE m2.produto_id = p.id AND r2.motivo_id = 1 AND m2.data < ?
-                    ), 0) AS valor_ant,
-
-                    /* Entradas no período */
-                    COALESCE((
-                        SELECT SUM(m2.qtde)
-                        FROM movimento m2
-                        INNER JOIN requisicao_item ri2 ON ri2.id = m2.request_item_id
-                        INNER JOIN requisicao r2 ON r2.id = ri2.request_id
-                        WHERE m2.produto_id = p.id AND r2.motivo_id = 1
-                          AND m2.data BETWEEN ? AND ?
+                        SELECT SUM(m.qtde)
+                        FROM movimento m
+                        WHERE m.produto_id = p.id AND m.qtde > 0 AND m.data >= ? AND m.data <= ?
                     ), 0) AS qtde_entrada,
 
                     COALESCE((
-                        SELECT SUM(m2.qtde * m2.valor_produto)
-                        FROM movimento m2
-                        INNER JOIN requisicao_item ri2 ON ri2.id = m2.request_item_id
-                        INNER JOIN requisicao r2 ON r2.id = ri2.request_id
-                        WHERE m2.produto_id = p.id AND r2.motivo_id = 1
-                          AND m2.data BETWEEN ? AND ?
+                        SELECT SUM(m.qtde * COALESCE(NULLIF(m.valor_produto, 0), p.valor_compra, 0))
+                        FROM movimento m
+                        WHERE m.produto_id = p.id AND m.qtde > 0 AND m.data >= ? AND m.data <= ?
                     ), 0) AS valor_entrada,
 
-                    /* Saídas no período */
+                    /* Saídas no período selecionado (módulo de qtde < 0) */
                     COALESCE((
-                        SELECT ABS(SUM(m2.qtde))
-                        FROM movimento m2
-                        INNER JOIN requisicao_item ri2 ON ri2.id = m2.request_item_id
-                        INNER JOIN requisicao r2 ON r2.id = ri2.request_id
-                        WHERE m2.produto_id = p.id AND r2.motivo_id = 2
-                          AND m2.data BETWEEN ? AND ?
+                        SELECT ABS(SUM(m.qtde))
+                        FROM movimento m
+                        WHERE m.produto_id = p.id AND m.qtde < 0 AND m.data >= ? AND m.data <= ?
                     ), 0) AS qtde_saida,
 
                     COALESCE((
-                        SELECT SUM(ABS(m2.qtde) * m2.valor_produto)
-                        FROM movimento m2
-                        INNER JOIN requisicao_item ri2 ON ri2.id = m2.request_item_id
-                        INNER JOIN requisicao r2 ON r2.id = ri2.request_id
-                        WHERE m2.produto_id = p.id AND r2.motivo_id = 2
-                          AND m2.data BETWEEN ? AND ?
-                    ), 0) AS valor_saida
+                        SELECT SUM(ABS(m.qtde) * COALESCE(NULLIF(m.valor_produto, 0), p.valor_compra, 0))
+                        FROM movimento m
+                        WHERE m.produto_id = p.id AND m.qtde < 0 AND m.data >= ? AND m.data <= ?
+                    ), 0) AS valor_saida,
+
+                    /* Movimentos posteriores a d2 (do fim do período até agora) */
+                    COALESCE((
+                        SELECT SUM(m.qtde)
+                        FROM movimento m
+                        WHERE m.produto_id = p.id AND m.data > ?
+                    ), 0) AS mov_pos
 
                 FROM produto p
                 LEFT JOIN departamento dep ON dep.id = p.depto_id
                 WHERE p.status = 1 $deptoFilter
                 ORDER BY dep.descricao, p.descricao_resumo";
 
-        $params = [$d1, $d1, $d1, $d2, $d1, $d2, $d1, $d2, $d1, $d2];
+        $params = [$d1, $d2, $d1, $d2, $d1, $d2, $d1, $d2, $d2];
         if ($depto_id) {
             $params[] = $depto_id;
         }
@@ -151,13 +134,34 @@ class RelatoriosController {
 
         $result = [];
         foreach ($rows as $row) {
-            $row['qtde_ant'] = (int)$row['qtde_ant'];
-            $row['valor_ant'] = (float)$row['valor_ant'];
-            $row['qtde_entrada'] = (int)$row['qtde_entrada'];
-            $row['valor_entrada'] = (float)$row['valor_entrada'];
-            $row['qtde_saida'] = (int)$row['qtde_saida'];
-            $row['valor_saida'] = (float)$row['valor_saida'];
-            $result[] = $row;
+            $estoqueAtualFisico = (float)($row['qtde_estoque'] ?? 0);
+            $movPos = (float)($row['mov_pos'] ?? 0);
+            $qEntrada = (float)($row['qtde_entrada'] ?? 0);
+            $qSaida = (float)($row['qtde_saida'] ?? 0);
+            $vUnit = (float)($row['valor_compra'] ?? 0);
+
+            // Saldo no final da data limite selecionada (d2)
+            $saldoFinal = $estoqueAtualFisico - $movPos;
+
+            // Saldo anterior antes do início do período (d1)
+            $saldoAnt = $saldoFinal - $qEntrada + $qSaida;
+
+            $vAnt = round($saldoAnt * $vUnit, 2);
+            $vFinal = round($saldoFinal * $vUnit, 2);
+
+            $result[] = [
+                'depto'         => $row['depto'] ?? 'Sem Departamento',
+                'produto'       => $row['produto'] ?? '—',
+                'qtde_ant'      => $saldoAnt,
+                'valor_ant'     => $vAnt,
+                'qtde_entrada'  => $qEntrada,
+                'valor_entrada' => (float)$row['valor_entrada'],
+                'qtde_saida'    => $qSaida,
+                'valor_saida'   => (float)$row['valor_saida'],
+                'saldo_atual'   => $saldoFinal,
+                'valor_atual'   => $vFinal,
+                'valor_unitario'=> $vUnit,
+            ];
         }
 
         return $result;
