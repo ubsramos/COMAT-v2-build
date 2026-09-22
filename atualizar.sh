@@ -30,6 +30,15 @@ fi
 git remote remove origin 2>/dev/null || true
 git remote add origin "$BUILD_REPO"
 
+# 1. Faz backup temporário do .env.production local para preservar senhas e IPs da produção
+if [ -f "$SCRIPT_DIR/.env.production" ]; then
+    cp "$SCRIPT_DIR/.env.production" /tmp/.env.production.comat.bak 2>/dev/null || true
+fi
+
+# 2. Limpa conflitos e arquivos não monitorados que travam o merge (ex: app/backend/index.php)
+git checkout -- . 2>/dev/null || true
+git clean -fd 2>/dev/null || true
+
 echo -e "\n${CYAN}[1/3] Baixando versao compilada mais recente do GitHub...${NC}"
 if ! git fetch origin main; then
     echo -e "${YELLOW}Tentando recuperar referencias locais do Git...${NC}"
@@ -40,6 +49,11 @@ git reset --hard origin/main
 git clean -fd 2>/dev/null || true
 git branch -M main 2>/dev/null || true
 git branch --set-upstream-to=origin/main main 2>/dev/null || true
+
+# 3. Restaura o .env.production local com as credenciais reais do servidor
+if [ -f /tmp/.env.production.comat.bak ]; then
+    cp /tmp/.env.production.comat.bak "$SCRIPT_DIR/.env.production"
+fi
 
 # Garante que o .env.production exista antes de subir o Docker
 if [ ! -f "$SCRIPT_DIR/.env.production" ]; then
@@ -74,6 +88,9 @@ fi
 echo -e "\n${CYAN}[3/3] Verificando e migrando estrutura do banco de dados...${NC}"
 docker exec comat_v2_app php /var/www/html/backend/db_migrate.php 2>/dev/null || \
 docker compose exec -T comat_app php /var/www/html/backend/db_migrate.php 2>/dev/null || true
+
+# Limpa imagens antigas e órfãs (dangling) para liberar espaço em disco
+docker image prune -f >/dev/null 2>&1 || true
 
 REAL_USER="${SUDO_USER:-$USER}"
 if [ "$REAL_USER" != "root" ]; then

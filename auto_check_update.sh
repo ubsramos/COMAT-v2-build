@@ -35,11 +35,23 @@ if [ -n "$REMOTE_HASH" ] && [ "$LOCAL_HASH" != "$REMOTE_HASH" ]; then
     echo "Versao Remota: $REMOTE_HASH"
     echo "Atualizando aplicacao e recarregando Docker..."
     
+    # Preserva o .env.production local com as credenciais reais
+    if [ -f "$SCRIPT_DIR/.env.production" ]; then
+        cp "$SCRIPT_DIR/.env.production" /tmp/.env.production.comat.bak 2>/dev/null || true
+    fi
+
     # Puxa os novos arquivos forcando sobreescrita limpa
+    git checkout -- . >/dev/null 2>&1 || true
+    git clean -fd >/dev/null 2>&1 || true
     git reset --hard origin/main >/dev/null 2>&1 || true
     git clean -fd >/dev/null 2>&1 || true
     git branch -M main >/dev/null 2>&1 || true
     git branch --set-upstream-to=origin/main main >/dev/null 2>&1 || true
+
+    # Restaura o .env.production com as credenciais reais do servidor
+    if [ -f /tmp/.env.production.comat.bak ]; then
+        cp /tmp/.env.production.comat.bak "$SCRIPT_DIR/.env.production"
+    fi
     
     # Garante que o .env.production exista antes de subir o Docker
     if [ ! -f "$SCRIPT_DIR/.env.production" ]; then
@@ -68,6 +80,9 @@ EOF
     docker exec comat_v2_app php /var/www/html/backend/db_migrate.php >/dev/null 2>&1 || \
     docker compose exec -T comat_app php /var/www/html/backend/db_migrate.php >/dev/null 2>&1 || true
     
+    # Limpa imagens antigas/dangling para poupar disco
+    docker image prune -f >/dev/null 2>&1 || true
+
     REAL_USER="${SUDO_USER:-$USER}"
     if [ "$REAL_USER" != "root" ]; then
         chown -R "$REAL_USER:$REAL_USER" "$SCRIPT_DIR" 2>/dev/null || true
