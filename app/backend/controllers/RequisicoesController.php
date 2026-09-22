@@ -469,6 +469,79 @@ class RequisicoesController {
         ];
     }
 
+    public function atualizarItem($id, $itemId) {
+        $currentUser = Security::getCurrentUser();
+        Security::checkAccess($currentUser, ["CM21", "CM22", "CM24"]);
+
+        $isAdminEstoque = (
+            ($currentUser['type'] === 'usuario' && ((int)($currentUser['nivel'] ?? 9) <= 1 || ($currentUser['login'] ?? '') === 'admin' || strpos((string)($currentUser['acesso'] ?? ''), 'ALL') !== false)) ||
+            (!empty($currentUser['admin_estoque']))
+        );
+
+        $db = Config::getDb();
+
+        // Verifica a requisição e seu status
+        $stmt = $db->prepare("SELECT id, motivo_id, status FROM requisicao WHERE id = ?");
+        $stmt->execute([$id]);
+        $req = $stmt->fetch();
+
+        if (!$req) {
+            throw new Exception("Requisição não encontrada", 404);
+        }
+
+        if ((int)$req['status'] !== 0) {
+            throw new Exception("Não é permitido alterar itens de requisições já aprovadas ou finalizadas", 400);
+        }
+
+        if (!$isAdminEstoque) {
+            throw new Exception("Apenas o Gerente ou Administrador do Estoque tem permissão para alterar as quantidades dos itens", 403);
+        }
+
+        // Busca o item da requisição
+        $stmt = $db->prepare("SELECT ri.*, p.qtde_estoque, p.descricao_resumo FROM requisicao_item ri INNER JOIN produto p ON p.id = ri.produto_id WHERE ri.id = ? AND ri.request_id = ?");
+        $stmt->execute([$itemId, $id]);
+        $item = $stmt->fetch();
+
+        if (!$item) {
+            throw new Exception("Item não encontrado nesta requisição", 404);
+        }
+
+        $d = getJsonBody();
+        if (!isset($d['qtde'])) {
+            throw new Exception("Informe a quantidade desejada", 400);
+        }
+
+        $novaQtde = (float)$d['qtde'];
+        if ($novaQtde <= 0) {
+            throw new Exception("A quantidade deve ser maior que zero", 400);
+        }
+
+        // Valida estoque para saídas
+        $stmtMot = $db->prepare("SELECT tipo FROM motivo WHERE id = ?");
+        $stmtMot->execute([$req['motivo_id']]);
+        $motRow = $stmtMot->fetch();
+        $isSaida = $motRow ? (strtoupper($motRow['tipo'] ?? '') === 'SAIDA') : ($req['motivo_id'] == 1);
+
+        if ($isSaida && (float)$item['qtde_estoque'] < $novaQtde) {
+            throw new Exception("Estoque insuficiente para a quantidade informada. Disponível em estoque: " . $item['qtde_estoque'], 400);
+        }
+
+        $novoValor = isset($d['valor_produto']) ? (float)$d['valor_produto'] : (float)($item['valor_produto'] ?? 0.0);
+
+        $stmtUp = $db->prepare("UPDATE requisicao_item SET qtde = ?, valor_produto = ? WHERE id = ? AND request_id = ?");
+        $stmtUp->execute([$novaQtde, $novoValor, $itemId, $id]);
+
+        return [
+            "ok" => true,
+            "id" => (int)$itemId,
+            "request_id" => (int)$id,
+            "produto_id" => (int)$item['produto_id'],
+            "qtde" => $novaQtde,
+            "valor_produto" => $novoValor,
+            "descricao_resumo" => $item['descricao_resumo'],
+        ];
+    }
+
     public function removerItem($id, $itemId) {
         $currentUser = Security::getCurrentUser();
         Security::checkAccess($currentUser, ["CM21", "CM22"]);

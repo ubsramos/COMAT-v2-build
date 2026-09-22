@@ -332,7 +332,8 @@ class DashboardController {
         }
 
         return [
-            "total_produtos" => $total_produtos,
+            "total_produtos" => (int)($peStats['total_catalogo'] ?? $total_produtos),
+            "total_produtos_movimentados" => $total_produtos,
             "total_requisicoes" => $total_req,
             "requisicoes_pendentes" => $req_pendentes,
             "requisicoes_aprovadas" => $req_aprovadas,

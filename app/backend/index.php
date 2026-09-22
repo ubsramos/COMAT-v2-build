@@ -83,6 +83,7 @@ $routes = [
     ['PUT',    '/requisicoes/{id}',                   'RequisicoesController@atualizar'],
     ['DELETE', '/requisicoes/{id}',                   'RequisicoesController@deletar'],
     ['POST',   '/requisicoes/{id}/itens',             'RequisicoesController@adicionarItem'],
+    ['PUT',    '/requisicoes/{id}/itens/{item_id}',   'RequisicoesController@atualizarItem'],
     ['DELETE', '/requisicoes/{id}/itens/{item_id}',   'RequisicoesController@removerItem'],
     ['POST',   '/requisicoes/{id}/aprovar',           'RequisicoesController@aprovar'],
     ['POST',   '/requisicoes/{id}/processar',         'RequisicoesController@processar'],
