@@ -70,6 +70,16 @@ class DatabaseMigrator {
           `criado_em` DATETIME DEFAULT CURRENT_TIMESTAMP
         ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;");
 
+        // 2.1 Tabela: departamento_email (Múltiplos e-mails por departamento para notificações)
+        $db->exec("CREATE TABLE IF NOT EXISTS `departamento_email` (
+          `id` INT AUTO_INCREMENT PRIMARY KEY,
+          `depto_id` INT NOT NULL,
+          `email` VARCHAR(255) NOT NULL,
+          `nome` VARCHAR(255) NULL,
+          `criado_em` DATETIME DEFAULT CURRENT_TIMESTAMP,
+          INDEX `idx_depto_email_depto` (`depto_id`)
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;");
+
         // 3. Tabela: grupo
         $db->exec("CREATE TABLE IF NOT EXISTS `grupo` (
           `id` INT AUTO_INCREMENT PRIMARY KEY,

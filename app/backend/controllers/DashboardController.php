@@ -15,16 +15,31 @@ class DashboardController {
 
     public function stats() {
         $currentUser = Security::getCurrentUser(); // Valida autenticação
+        Security::checkAccess($currentUser, ["CM0"]); // Valida acesso ao Dashboard
 
         $db = Config::getDb();
 
-        // 1. Captura de Filtros via $_GET
+        // 1. Escopo de Departamentos permitidos para o usuário logado
+        $userDeptos = [];
+        if (empty($currentUser['todos_deptos'])) {
+            $userDeptos = !empty($currentUser['departamentos']) ? array_column($currentUser['departamentos'], 'id') : [];
+            if (empty($userDeptos)) {
+                $userDeptos = [-999999]; // Usuário sem nenhum departamento vinculado: não visualiza dados
+            }
+        }
+
+        // 2. Captura de Filtros via $_GET
         $data_ini = $_GET['data_ini'] ?? null;
         $data_fim = $_GET['data_fim'] ?? null;
         $depto_id = isset($_GET['depto_id']) && $_GET['depto_id'] !== '' ? (int)$_GET['depto_id'] : null;
         $produto_id = isset($_GET['produto_id']) && $_GET['produto_id'] !== '' ? (int)$_GET['produto_id'] : null;
         $grupo_id = isset($_GET['grupo_id']) && $_GET['grupo_id'] !== '' ? (int)$_GET['grupo_id'] : null;
         $usuario_id = isset($_GET['usuario_id']) && $_GET['usuario_id'] !== '' ? (int)$_GET['usuario_id'] : null;
+
+        // Se o usuário possui departamentos restritos, valida se o filtro solicitado é permitido
+        if ($depto_id && !empty($userDeptos) && !in_array($depto_id, $userDeptos)) {
+            $depto_id = null; // Ignora filtro não autorizado
+        }
 
         $now = new DateTime();
         $default_ini = $now->format('Y') . '-01-01'; // 01 de janeiro do ano atual
@@ -36,20 +51,25 @@ class DashboardController {
 
         $periodo_label = (new DateTime($dIniStr))->format('d/m/Y') . ' a ' . (new DateTime($dFimStr))->format('d/m/Y');
 
-        // 2. Construção dinâmica das cláusulas WHERE
+        // Helper para cláusula de departamento (seja depto_id específico ou IN dos permitidos)
+        $inDeptosSql = !empty($userDeptos) ? implode(',', array_map('intval', $userDeptos)) : null;
+
+        // 3. Construção dinâmica das cláusulas WHERE
         // Cláusula para produtos
-        $whereProd = " WHERE status = 1";
+        $whereProd = " WHERE p.status = 1";
         $paramsProd = [];
         if ($depto_id) {
-            $whereProd .= " AND depto_id = ?";
+            $whereProd .= " AND p.depto_id = ?";
             $paramsProd[] = $depto_id;
+        } elseif ($inDeptosSql) {
+            $whereProd .= " AND p.depto_id IN ($inDeptosSql)";
         }
         if ($grupo_id) {
-            $whereProd .= " AND grupo_id = ?";
+            $whereProd .= " AND p.grupo_id = ?";
             $paramsProd[] = $grupo_id;
         }
         if ($produto_id) {
-            $whereProd .= " AND id = ?";
+            $whereProd .= " AND p.id = ?";
             $paramsProd[] = $produto_id;
         }
 
@@ -59,6 +79,8 @@ class DashboardController {
         if ($depto_id) {
             $whereReq .= " AND r.depto_destino_id = ?";
             $paramsReq[] = $depto_id;
+        } elseif ($inDeptosSql) {
+            $whereReq .= " AND r.depto_destino_id IN ($inDeptosSql)";
         }
         if ($produto_id) {
             $whereReq .= " AND ri.produto_id = ?";
@@ -79,6 +101,8 @@ class DashboardController {
         if ($depto_id) {
             $whereMov .= " AND r.depto_destino_id = ?";
             $paramsMov[] = $depto_id;
+        } elseif ($inDeptosSql) {
+            $whereMov .= " AND r.depto_destino_id IN ($inDeptosSql)";
         }
         if ($produto_id) {
             $whereMov .= " AND mov.produto_id = ?";
@@ -93,7 +117,7 @@ class DashboardController {
             $paramsMov[] = $usuario_id;
         }
 
-        // 3. Execução das queries de totais gerais
+        // 4. Execução das queries de totais gerais
         // Total Produtos
         $sqlTotalProd = "SELECT COUNT(DISTINCT ri.produto_id) AS c
                          FROM requisicao_item ri
@@ -129,12 +153,14 @@ class DashboardController {
         $stmt->execute($paramsReq);
         $req_atendidas = (int)($stmt->fetch()['c'] ?? 0);
 
-        // 3.1 Valor do Estoque e Posição Atual do Estoque Físico Real (Ativo no catálogo)
+        // 4.1 Valor do Estoque e Posição Atual do Estoque Físico Real (Ativo no catálogo)
         $whereEstoqueReal = " WHERE p.status = 1";
         $paramsEstoqueReal = [];
         if ($depto_id) {
             $whereEstoqueReal .= " AND p.depto_id = ?";
             $paramsEstoqueReal[] = $depto_id;
+        } elseif ($inDeptosSql) {
+            $whereEstoqueReal .= " AND p.depto_id IN ($inDeptosSql)";
         }
         if ($grupo_id) {
             $whereEstoqueReal .= " AND p.grupo_id = ?";
@@ -161,8 +187,9 @@ class DashboardController {
         // Lista dos produtos que têm valor e saldo em estoque
         $sqlItensEstoque = "SELECT 
             p.id,
-            p.descricao_resumo,
+            p.codigo,
             p.codigo_interno,
+            p.descricao_resumo,
             p.qtde_estoque,
             p.valor_compra,
             (p.qtde_estoque * p.valor_compra) AS subtotal,
@@ -180,12 +207,18 @@ class DashboardController {
 
         $itens_estoque_valorado = [];
         foreach ($itensEstoqueRaw as $it) {
+            $cod = !empty($it['codigo_interno']) ? $it['codigo_interno'] : (!empty($it['codigo']) ? $it['codigo'] : '');
+            $desc = $it['descricao_resumo'] ?? '';
+            $valUnit = (float)($it['valor_compra'] ?? 0.0);
             $itens_estoque_valorado[] = [
                 "id" => (int)$it['id'],
-                "descricao_resumo" => $it['descricao_resumo'],
+                "codigo" => $cod,
                 "codigo_interno" => $it['codigo_interno'] ?? '',
+                "descricao" => $desc,
+                "descricao_resumo" => $desc,
                 "qtde_estoque" => (float)$it['qtde_estoque'],
-                "valor_compra" => (float)$it['valor_compra'],
+                "valor_unitario" => $valUnit,
+                "valor_compra" => $valUnit,
                 "subtotal" => (float)$it['subtotal'],
                 "depto_nome" => $it['depto_nome'] ?? '—',
                 "grupo_nome" => $it['grupo_nome'] ?? '—'

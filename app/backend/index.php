@@ -56,6 +56,9 @@ $routes = [
     ['GET',    '/departamentos/{id}',                 'DepartamentosController@detalhe'],
     ['PUT',    '/departamentos/{id}',                 'DepartamentosController@atualizar'],
     ['DELETE', '/departamentos/{id}',                 'DepartamentosController@deletar'],
+    ['GET',    '/departamentos/{id}/emails',          'DepartamentosController@listarEmails'],
+    ['POST',   '/departamentos/{id}/emails',          'DepartamentosController@adicionarEmail'],
+    ['DELETE', '/departamentos/{id}/emails/{email_id}','DepartamentosController@removerEmail'],
 
     // Funcionários
     ['GET',    '/funcionarios',                       'FuncionariosController@listar'],
@@ -86,6 +89,7 @@ $routes = [
     ['PUT',    '/requisicoes/{id}/itens/{item_id}',   'RequisicoesController@atualizarItem'],
     ['DELETE', '/requisicoes/{id}/itens/{item_id}',   'RequisicoesController@removerItem'],
     ['POST',   '/requisicoes/{id}/aprovar',           'RequisicoesController@aprovar'],
+    ['POST',   '/requisicoes/{id}/notificar-aprovador','RequisicoesController@notificarAprovador'],
     ['POST',   '/requisicoes/{id}/processar',         'RequisicoesController@processar'],
     ['POST',   '/requisicoes/{id}/devolver',          'RequisicoesController@devolver'],
 

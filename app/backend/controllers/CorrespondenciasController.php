@@ -56,6 +56,18 @@ class CorrespondenciasController {
                 }
             }
         } elseif ($deptoId) {
+            // Busca e-mails cadastrados na lista de e-mails do departamento
+            $stmtEmails = $db->prepare("SELECT email FROM departamento_email WHERE depto_id = ? ORDER BY id ASC");
+            $stmtEmails->execute([$deptoId]);
+            $rows = $stmtEmails->fetchAll(PDO::FETCH_COLUMN);
+            if (!empty($rows)) {
+                $emailsLimpos = array_filter(array_map('trim', $rows));
+                if (!empty($emailsLimpos)) {
+                    return implode(', ', array_unique($emailsLimpos));
+                }
+            }
+
+            // Fallback para o responsável do departamento
             $stmt = $db->prepare("
                 SELECT f.email, f.login_ldap
                 FROM funcionario f
@@ -304,7 +316,7 @@ class CorrespondenciasController {
         $stmt->execute([$novoId]);
         $row = $stmt->fetch();
 
-        // Dispara e-mail de notificação
+        // Dispara e-mail de notificação (pode conter múltiplos e-mails separados por vírgula)
         if ($email_ativo && !empty($email_destino) && $row) {
             $dadosEmail = array_merge($row, [
                 "data_chegada" => $data_chegada->format("d/m/Y às H:i"),
@@ -312,14 +324,24 @@ class CorrespondenciasController {
             $htmlBody = SmtpEmail::buildEmailCorrespondencia($dadosEmail);
             $subject = "[COMAT] {$tipo} aguardando sua retirada";
 
-            SmtpEmail::sendAsync($email_destino, $subject, $htmlBody, function($ok, $err) use ($db, $novoId) {
-                $stmt = $db->prepare("UPDATE correspondencia SET email_enviado = ?, email_erro = ? WHERE id = ?");
-                $stmt->execute([
-                    $ok ? 1 : 0,
-                    $err ?: null,
-                    $novoId
-                ]);
-            });
+            $destinatarios = preg_split('/[,;]+/', $email_destino);
+            $destinatarios = array_filter(array_map('trim', $destinatarios));
+            $destinatarios = array_unique(array_filter($destinatarios, function($em) {
+                return filter_var($em, FILTER_VALIDATE_EMAIL);
+            }));
+
+            if (!empty($destinatarios)) {
+                foreach ($destinatarios as $destEmail) {
+                    SmtpEmail::sendAsync($destEmail, $subject, $htmlBody, function($ok, $err) use ($db, $novoId) {
+                        $stmt = $db->prepare("UPDATE correspondencia SET email_enviado = ?, email_erro = ? WHERE id = ?");
+                        $stmt->execute([
+                            $ok ? 1 : 0,
+                            $err ?: null,
+                            $novoId
+                        ]);
+                    });
+                }
+            }
         }
 
         // Dispara WhatsApp de notificação se ativo

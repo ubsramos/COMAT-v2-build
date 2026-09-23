@@ -45,7 +45,7 @@ class SmtpEmail {
      * Dispara o envio de e-mail de forma assíncrona/não bloqueante
      * Em PHP, simulamos o comportamento não bloqueante de forma limpa
      */
-    public static function sendAsync($to, $subject, $htmlBody, callable $callback = null) {
+    public static function sendAsync($to, $subject, $htmlBody, ?callable $callback = null) {
         // Como o HostGator roda de forma síncrona na web, executamos o envio e chamamos o callback
         $res = self::send($to, $subject, $htmlBody);
         if ($callback) {
@@ -282,6 +282,225 @@ class SmtpEmail {
                 <tr>
                   <td style="padding:16px 32px;background:#f9fafb;border-top:1px solid #e5e7eb">
                     <p style="margin:0;font-size:12px;color:#9ca3af;text-align:center">
+                      E-mail gerado automaticamente pelo Sistema COMAT — não responda a esta mensagem.
+                    </p>
+                  </td>
+                </tr>
+              </table>
+            </td></tr>
+          </table>
+        </body>
+        </html>';
+    }
+
+    /**
+     * Constrói o HTML do e-mail de notificação para o Responsável/Aprovador do Departamento
+     */
+    public static function buildEmailRequisicaoPendenteAprovacao($dados) {
+        $id = $dados['id'] ?? '—';
+        $responsavel = htmlspecialchars($dados['responsavel_nome'] ?? 'Gestor');
+        $solicitante = htmlspecialchars($dados['solicitante_nome'] ?? 'Colaborador');
+        $depto = htmlspecialchars($dados['depto_nome'] ?? 'Setor');
+        $descricao = htmlspecialchars($dados['descricao'] ?? 'Sem descrição informada');
+        $dataPedido = $dados['data_pedido'] ?? date('d/m/Y H:i');
+        $itens = $dados['itens'] ?? [];
+
+        $tabelaItens = '';
+        if (!empty($itens)) {
+            $linhas = '';
+            foreach ($itens as $it) {
+                $pDesc = htmlspecialchars($it['descricao'] ?? $it['produto_nome'] ?? 'Item');
+                $pQtde = number_format((float)($it['qtde'] ?? 1), 2, ',', '.');
+                $pUn = htmlspecialchars($it['unidade'] ?? 'UN');
+                $linhas .= "
+                <tr>
+                    <td style='padding:8px 12px;font-size:13px;color:#1e293b;border-bottom:1px solid #e2e8f0;'>$pDesc</td>
+                    <td style='padding:8px 12px;font-size:13px;color:#1e293b;border-bottom:1px solid #e2e8f0;text-align:right;font-weight:600;'>$pQtde $pUn</td>
+                </tr>";
+            }
+            $tabelaItens = "
+            <div style='margin-top:16px;'>
+                <p style='font-size:13px;font-weight:700;color:#475569;text-transform:uppercase;margin-bottom:6px;'>Itens Solicitados:</p>
+                <table width='100%' cellpadding='0' cellspacing='0' style='border:1px solid #e2e8f0;border-radius:6px;overflow:hidden;background:#ffffff;'>
+                    <thead>
+                        <tr style='background:#f1f5f9;'>
+                            <th style='padding:8px 12px;font-size:12px;color:#64748b;text-align:left;'>Material / Insumo</th>
+                            <th style='padding:8px 12px;font-size:12px;color:#64748b;text-align:right;'>Qtde</th>
+                        </tr>
+                    </thead>
+                    <tbody>$linhas</tbody>
+                </table>
+            </div>";
+        }
+
+        return '
+        <!DOCTYPE html>
+        <html lang="pt-BR">
+        <head><meta charset="utf-8"><title>Requisição Aguardando Aprovação</title></head>
+        <body style="margin:0;padding:0;font-family:Arial,sans-serif;background:#f1f5f9">
+          <table width="100%" cellpadding="0" cellspacing="0" style="background:#f1f5f9;padding:32px 0">
+            <tr><td align="center">
+              <table width="600" cellpadding="0" cellspacing="0"
+                     style="background:#ffffff;border-radius:12px;overflow:hidden;box-shadow:0 4px 16px rgba(0,0,0,0.08)">
+                <tr>
+                  <td style="background:linear-gradient(135deg,#0284c7,#0369a1);padding:24px 32px">
+                    <p style="margin:0;font-size:11px;color:#bae6fd;text-transform:uppercase;letter-spacing:0.1em;font-weight:700">
+                      Sistema COMAT — Controle de Material
+                    </p>
+                    <h1 style="margin:8px 0 0;font-size:20px;color:#ffffff;font-weight:700">
+                      📋 Requisição #' . $id . ' aguardando sua aprovação
+                    </h1>
+                  </td>
+                </tr>
+                <tr>
+                  <td style="padding:28px 32px">
+                    <p style="margin:0 0 16px;font-size:15px;color:#334155;line-height:1.5">
+                      Olá, <strong>' . $responsavel . '</strong>!<br><br>
+                      Uma nova requisição de saída de material foi registrada para o departamento <strong>' . $depto . '</strong> e está aguardando sua autorização formal.
+                    </p>
+                    <table width="100%" cellpadding="0" cellspacing="0" style="border:1px solid #e2e8f0;border-radius:8px;overflow:hidden">
+                      <tr style="background:#f8fafc">
+                        <td style="padding:10px 14px;font-size:12px;font-weight:600;color:#64748b;width:130px">Nº Requisição</td>
+                        <td style="padding:10px 14px;font-size:13px;color:#0f172a;font-weight:700">#' . $id . '</td>
+                      </tr>
+                      <tr>
+                        <td style="padding:10px 14px;font-size:12px;font-weight:600;color:#64748b;border-top:1px solid #e2e8f0">Solicitante</td>
+                        <td style="padding:10px 14px;font-size:13px;color:#0f172a;border-top:1px solid #e2e8f0">' . $solicitante . '</td>
+                      </tr>
+                      <tr style="background:#f8fafc">
+                        <td style="padding:10px 14px;font-size:12px;font-weight:600;color:#64748b;border-top:1px solid #e2e8f0">Departamento</td>
+                        <td style="padding:10px 14px;font-size:13px;color:#0f172a;border-top:1px solid #e2e8f0">' . $depto . '</td>
+                      </tr>
+                      <tr>
+                        <td style="padding:10px 14px;font-size:12px;font-weight:600;color:#64748b;border-top:1px solid #e2e8f0">Data do Pedido</td>
+                        <td style="padding:10px 14px;font-size:13px;color:#0f172a;border-top:1px solid #e2e8f0">' . $dataPedido . '</td>
+                      </tr>
+                      <tr style="background:#f8fafc">
+                        <td style="padding:10px 14px;font-size:12px;font-weight:600;color:#64748b;border-top:1px solid #e2e8f0">Justificativa</td>
+                        <td style="padding:10px 14px;font-size:13px;color:#0f172a;border-top:1px solid #e2e8f0">' . $descricao . '</td>
+                      </tr>
+                    </table>
+                    ' . $tabelaItens . '
+                    <div style="margin-top:24px;padding:16px;background:#fef3c7;border-radius:8px;border-left:4px solid #f59e0b">
+                      <p style="margin:0;font-size:13px;color:#92400e;line-height:1.4">
+                        ⚠️ <strong>Ação Necessária:</strong> Acesse o sistema COMAT com suas credenciais para <strong>Aprovar</strong> ou <strong>Recusar</strong> esta solicitação.
+                      </p>
+                    </div>
+                  </td>
+                </tr>
+                <tr>
+                  <td style="padding:16px 32px;background:#f8fafc;border-top:1px solid #e2e8f0">
+                    <p style="margin:0;font-size:12px;color:#94a3b8;text-align:center">
+                      E-mail gerado automaticamente pelo Sistema COMAT — não responda a esta mensagem.
+                    </p>
+                  </td>
+                </tr>
+              </table>
+            </td></tr>
+          </table>
+        </body>
+        </html>';
+    }
+
+    /**
+     * Constrói o HTML do e-mail de notificação para a Equipe de Estoquistas / Almoxarifado
+     */
+    public static function buildEmailRequisicaoParaEstoquista($dados) {
+        $id = $dados['id'] ?? '—';
+        $estoquista = htmlspecialchars($dados['estoquista_nome'] ?? 'Equipe do Estoque');
+        $solicitante = htmlspecialchars($dados['solicitante_nome'] ?? 'Colaborador');
+        $depto = htmlspecialchars($dados['depto_nome'] ?? 'Setor');
+        $aprovador = htmlspecialchars($dados['aprovador_nome'] ?? 'Gestor do Setor');
+        $dataAprovacao = $dados['data_aprovacao'] ?? date('d/m/Y H:i');
+        $itens = $dados['itens'] ?? [];
+
+        $linhas = '';
+        if (!empty($itens)) {
+            foreach ($itens as $it) {
+                $pDesc = htmlspecialchars($it['descricao'] ?? $it['produto_nome'] ?? 'Item');
+                $pQtde = number_format((float)($it['qtde'] ?? 1), 2, ',', '.');
+                $pUn = htmlspecialchars($it['unidade'] ?? 'UN');
+                $linhas .= "
+                <tr>
+                    <td style='padding:8px 12px;font-size:13px;color:#1e293b;border-bottom:1px solid #e2e8f0;'>$pDesc</td>
+                    <td style='padding:8px 12px;font-size:13px;color:#0f766e;border-bottom:1px solid #e2e8f0;text-align:right;font-weight:700;'>$pQtde $pUn</td>
+                </tr>";
+            }
+        } else {
+            $linhas = "<tr><td colspan='2' style='padding:12px;font-size:13px;color:#64748b;text-align:center;'>Nenhum item discriminado</td></tr>";
+        }
+
+        return '
+        <!DOCTYPE html>
+        <html lang="pt-BR">
+        <head><meta charset="utf-8"><title>Requisição Aprovada Pronta para Atendimento</title></head>
+        <body style="margin:0;padding:0;font-family:Arial,sans-serif;background:#f1f5f9">
+          <table width="100%" cellpadding="0" cellspacing="0" style="background:#f1f5f9;padding:32px 0">
+            <tr><td align="center">
+              <table width="600" cellpadding="0" cellspacing="0"
+                     style="background:#ffffff;border-radius:12px;overflow:hidden;box-shadow:0 4px 16px rgba(0,0,0,0.08)">
+                <tr>
+                  <td style="background:linear-gradient(135deg,#059669,#047857);padding:24px 32px">
+                    <p style="margin:0;font-size:11px;color:#a7f3d0;text-transform:uppercase;letter-spacing:0.1em;font-weight:700">
+                      Almoxarifado & Estoque — COMAT
+                    </p>
+                    <h1 style="margin:8px 0 0;font-size:20px;color:#ffffff;font-weight:700">
+                      📦 Requisição #' . $id . ' Aprovada — Aguarda Separação
+                    </h1>
+                  </td>
+                </tr>
+                <tr>
+                  <td style="padding:28px 32px">
+                    <p style="margin:0 0 16px;font-size:15px;color:#334155;line-height:1.5">
+                      Olá, <strong>' . $estoquista . '</strong>!<br><br>
+                      A requisição de material <strong>#' . $id . '</strong> foi <strong>autorizada pelo gestor</strong> e está disponível para conferência física e baixa no estoque (módulo de Processamento).
+                    </p>
+                    <table width="100%" cellpadding="0" cellspacing="0" style="border:1px solid #e2e8f0;border-radius:8px;overflow:hidden">
+                      <tr style="background:#f8fafc">
+                        <td style="padding:10px 14px;font-size:12px;font-weight:600;color:#64748b;width:130px">Nº Requisição</td>
+                        <td style="padding:10px 14px;font-size:13px;color:#0f172a;font-weight:700">#' . $id . '</td>
+                      </tr>
+                      <tr>
+                        <td style="padding:10px 14px;font-size:12px;font-weight:600;color:#64748b;border-top:1px solid #e2e8f0">Setor Solicitante</td>
+                        <td style="padding:10px 14px;font-size:13px;color:#0f172a;border-top:1px solid #e2e8f0">' . $depto . '</td>
+                      </tr>
+                      <tr style="background:#f8fafc">
+                        <td style="padding:10px 14px;font-size:12px;font-weight:600;color:#64748b;border-top:1px solid #e2e8f0">Solicitante</td>
+                        <td style="padding:10px 14px;font-size:13px;color:#0f172a;border-top:1px solid #e2e8f0">' . $solicitante . '</td>
+                      </tr>
+                      <tr>
+                        <td style="padding:10px 14px;font-size:12px;font-weight:600;color:#64748b;border-top:1px solid #e2e8f0">Aprovado Por</td>
+                        <td style="padding:10px 14px;font-size:13px;color:#047857;font-weight:700;border-top:1px solid #e2e8f0">' . $aprovador . '</td>
+                      </tr>
+                      <tr style="background:#f8fafc">
+                        <td style="padding:10px 14px;font-size:12px;font-weight:600;color:#64748b;border-top:1px solid #e2e8f0">Aprovado em</td>
+                        <td style="padding:10px 14px;font-size:13px;color:#0f172a;border-top:1px solid #e2e8f0">' . $dataAprovacao . '</td>
+                      </tr>
+                    </table>
+
+                    <div style="margin-top:16px;">
+                      <p style="font-size:13px;font-weight:700;color:#475569;text-transform:uppercase;margin-bottom:6px;">Materiais a Separar:</p>
+                      <table width="100%" cellpadding="0" cellspacing="0" style="border:1px solid #e2e8f0;border-radius:6px;overflow:hidden;background:#ffffff;">
+                        <thead>
+                          <tr style="background:#f1f5f9;">
+                            <th style="padding:8px 12px;font-size:12px;color:#64748b;text-align:left;">Material</th>
+                            <th style="padding:8px 12px;font-size:12px;color:#64748b;text-align:right;">Qtde Solicitada</th>
+                          </tr>
+                        </thead>
+                        <tbody>' . $linhas . '</tbody>
+                      </table>
+                    </div>
+
+                    <div style="margin-top:24px;padding:16px;background:#ecfdf5;border-radius:8px;border-left:4px solid #10b981">
+                      <p style="margin:0;font-size:13px;color:#065f46;line-height:1.4">
+                        📍 <strong>Próximo Passo:</strong> Separe fisicamente os itens acima e acesse a tela de <strong>Processamento</strong> do COMAT para efetuar a entrega ao solicitante.
+                      </p>
+                    </div>
+                  </td>
+                </tr>
+                <tr>
+                  <td style="padding:16px 32px;background:#f8fafc;border-top:1px solid #e2e8f0">
+                    <p style="margin:0;font-size:12px;color:#94a3b8;text-align:center">
                       E-mail gerado automaticamente pelo Sistema COMAT — não responda a esta mensagem.
                     </p>
                   </td>

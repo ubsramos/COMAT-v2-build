@@ -281,6 +281,10 @@ class RequisicoesController {
         ]);
 
         $id = $db->lastInsertId();
+
+        // Dispara notificação por e-mail/WhatsApp para os aprovadores do departamento de destino
+        $this->notificarAprovadoresDepartamento($db, $id);
+
         return $this->getReqWithItens($db, $id);
     }
 
@@ -708,6 +712,63 @@ class RequisicoesController {
                             WhatsApp::sendAsync($sol['telefone'], $msg);
                         }
                     }
+
+                    // Notifica a equipe de Estoquistas / Almoxarifado sobre a requisição aprovada
+                    $stmtEst = $db->query("
+                        SELECT f.id, f.nome, f.email, f.telefone
+                        FROM funcionario f
+                        WHERE f.admin_estoque = 1 AND f.status = 1 AND f.email IS NOT NULL AND f.email != ''
+                    ");
+                    $estoquistas = $stmtEst->fetchAll();
+
+                    if (!empty($estoquistas)) {
+                        // Busca dados complementares da requisição para o e-mail do estoquista
+                        $stmtInfo = $db->prepare("
+                            SELECT r.id, dd.descricao AS depto_nome, sol.nome AS solicitante_nome, apr.nome AS aprovador_nome
+                            FROM requisicao r
+                            LEFT JOIN departamento dd ON dd.id = r.depto_destino_id
+                            LEFT JOIN funcionario sol ON sol.id = r.usuario_solicitante_id
+                            LEFT JOIN funcionario apr ON apr.id = r.usuario_aprovador_id
+                            WHERE r.id = ?
+                        ");
+                        $stmtInfo->execute([$id]);
+                        $infoReq = $stmtInfo->fetch();
+
+                        // Busca itens da requisição
+                        $stmtIt = $db->prepare("
+                            SELECT ri.qtde, p.descricao_resumo AS descricao, p.unidade
+                            FROM requisicao_item ri
+                            JOIN produto p ON p.id = ri.produto_id
+                            WHERE ri.request_id = ?
+                        ");
+                        $stmtIt->execute([$id]);
+                        $itensReq = $stmtIt->fetchAll() ?: [];
+
+                        $dadosEstoquista = [
+                            'id' => $id,
+                            'depto_nome' => $infoReq['depto_nome'] ?? '—',
+                            'solicitante_nome' => $infoReq['solicitante_nome'] ?? '—',
+                            'aprovador_nome' => $infoReq['aprovador_nome'] ?? ($currentUser['nome'] ?? 'Gestor'),
+                            'data_aprovacao' => date('d/m/Y H:i'),
+                            'itens' => $itensReq
+                        ];
+
+                        require_once __DIR__ . '/../SmtpEmail.php';
+
+                        foreach ($estoquistas as $est) {
+                            if ($email_ativo && !empty($est['email'])) {
+                                $dadosEstoquista['estoquista_nome'] = $est['nome'];
+                                $subjEst = "[COMAT] Requisição Aprovada Pronta para Atendimento (Req #$id)";
+                                $bodyEst = SmtpEmail::buildEmailRequisicaoParaEstoquista($dadosEstoquista);
+                                SmtpEmail::sendAsync($est['email'], $subjEst, $bodyEst);
+                            }
+                            if ($wa_ativo && !empty($est['telefone'])) {
+                                require_once __DIR__ . '/../WhatsApp.php';
+                                $msgEst = "Olá, *" . $est['nome'] . "*! A Requisição de Material *#$id* (" . ($infoReq['depto_nome'] ?? '') . ") foi *aprovada pelo gestor* e aguarda separação/baixa no estoque.";
+                                WhatsApp::sendAsync($est['telefone'], $msgEst);
+                            }
+                        }
+                    }
                 }
             }
         } catch (Exception $e) {
@@ -910,5 +971,102 @@ class RequisicoesController {
         $stmt->execute([$id]);
 
         return ["ok" => true, "status" => 0];
+    }
+
+    /**
+     * Endpoint manual/explícito para reenviar notificação ao gestor do departamento
+     */
+    public function notificarAprovador($id) {
+        $currentUser = Security::getCurrentUser();
+        $db = Config::getDb();
+        $this->notificarAprovadoresDepartamento($db, $id);
+        return ["ok" => true, "message" => "Notificação enviada ao responsável do setor com sucesso."];
+    }
+
+    /**
+     * Envia notificação por e-mail e WhatsApp para os aprovadores/responsáveis do departamento
+     */
+    private function notificarAprovadoresDepartamento($db, $requisicaoId) {
+        try {
+            $stmtCfg = $db->query("SELECT email_ativo, wa_ativo FROM parametros LIMIT 1");
+            $cfg = $stmtCfg->fetch();
+            if (!$cfg || (empty($cfg['email_ativo']) && empty($cfg['wa_ativo']))) {
+                return;
+            }
+            $email_ativo = (int)($cfg['email_ativo'] ?? 0);
+            $wa_ativo = (int)($cfg['wa_ativo'] ?? 0);
+
+            // Busca dados da requisição e do departamento de destino
+            $stmtReq = $db->prepare("
+                SELECT r.id, r.descricao, r.data_pedido,
+                       dep.id AS depto_id, dep.descricao AS depto_nome, dep.user_auth,
+                       sol.nome AS solicitante_nome
+                FROM requisicao r
+                LEFT JOIN departamento dep ON dep.id = r.depto_destino_id
+                LEFT JOIN funcionario sol ON sol.id = r.usuario_solicitante_id
+                WHERE r.id = ?
+            ");
+            $stmtReq->execute([$requisicaoId]);
+            $req = $stmtReq->fetch();
+            if (!$req) return;
+
+            // Busca os itens já vinculados (se houver)
+            $stmtIt = $db->prepare("
+                SELECT ri.qtde, p.descricao_resumo AS descricao, p.unidade
+                FROM requisicao_item ri
+                JOIN produto p ON p.id = ri.produto_id
+                WHERE ri.request_id = ?
+            ");
+            $stmtIt->execute([$requisicaoId]);
+            $itens = $stmtIt->fetchAll() ?: [];
+
+            // Identifica os aprovadores em user_auth do departamento
+            $authRaw = trim((string)($req['user_auth'] ?? ''));
+            if (empty($authRaw)) {
+                return; // Nenhum aprovador cadastrado no departamento
+            }
+
+            $authParts = array_filter(array_map('trim', explode(',', $authRaw)));
+            if (empty($authParts)) return;
+
+            // Constrói cláusula WHERE para buscar funcionários por ID ou por login
+            $placeholders = implode(',', array_fill(0, count($authParts), '?'));
+            $sqlAprov = "SELECT id, nome, email, telefone FROM funcionario 
+                         WHERE status = 1 AND (id IN ($placeholders) OR login_ldap IN ($placeholders))";
+            $stmtAprov = $db->prepare($sqlAprov);
+            $stmtAprov->execute(array_merge($authParts, $authParts));
+            $aprovadores = $stmtAprov->fetchAll();
+
+            if (empty($aprovadores)) return;
+
+            require_once __DIR__ . '/../SmtpEmail.php';
+
+            $dPedido = !empty($req['data_pedido']) ? (new DateTime($req['data_pedido']))->format('d/m/Y H:i') : date('d/m/Y H:i');
+
+            foreach ($aprovadores as $apr) {
+                if ($email_ativo && !empty($apr['email'])) {
+                    $dadosEmail = [
+                        'id' => $req['id'],
+                        'responsavel_nome' => $apr['nome'],
+                        'solicitante_nome' => $req['solicitante_nome'] ?? 'Colaborador',
+                        'depto_nome' => $req['depto_nome'] ?? 'Setor',
+                        'descricao' => $req['descricao'] ?? 'Sem justificativa informada',
+                        'data_pedido' => $dPedido,
+                        'itens' => $itens
+                    ];
+                    $subj = "[COMAT] Nova Requisição Aguardando Sua Aprovação (Req #" . $req['id'] . ")";
+                    $body = SmtpEmail::buildEmailRequisicaoPendenteAprovacao($dadosEmail);
+                    SmtpEmail::sendAsync($apr['email'], $subj, $body);
+                }
+
+                if ($wa_ativo && !empty($apr['telefone'])) {
+                    require_once __DIR__ . '/../WhatsApp.php';
+                    $msg = "Olá, *" . $apr['nome'] . "*! Uma nova requisição de material *#" . $req['id'] . "* foi aberta para o departamento *" . ($req['depto_nome'] ?? '') . "* por *" . ($req['solicitante_nome'] ?? '') . "* e aguarda sua autorização no COMAT.";
+                    WhatsApp::sendAsync($apr['telefone'], $msg);
+                }
+            }
+        } catch (Exception $e) {
+            // Silencia para não interromper fluxo da requisição
+        }
     }
 }
